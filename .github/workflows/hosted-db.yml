@@ -53,7 +53,6 @@ jobs:
         run: |
           missing=()
           [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing+=("SUPABASE_ACCESS_TOKEN")
-          [ -n "$SUPABASE_PROJECT_REF" ]  || missing+=("SUPABASE_PROJECT_REF")
           [ -n "$SUPABASE_DB_PASSWORD" ]  || missing+=("SUPABASE_DB_PASSWORD")
           [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] || missing+=("NEXT_PUBLIC_SUPABASE_URL")
           [ -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ] || missing+=("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
@@ -62,6 +61,25 @@ jobs:
             echo "Add them under Settings → Secrets and variables → Actions."
             exit 1
           fi
+
+          # The project ref is the subdomain of the project URL. Deriving it
+          # rather than requiring it separately removes one secret to set, and
+          # removes the possibility of a ref that disagrees with the URL —
+          # which would link one project and probe another.
+          if [ -z "$SUPABASE_PROJECT_REF" ]; then
+            derived=$(printf '%s' "$NEXT_PUBLIC_SUPABASE_URL" \
+              | sed -E 's#^https?://##; s#\..*$##')
+            if [ -z "$derived" ]; then
+              echo "::error::Could not derive a project ref from NEXT_PUBLIC_SUPABASE_URL"
+              echo "($NEXT_PUBLIC_SUPABASE_URL). Set SUPABASE_PROJECT_REF explicitly."
+              exit 1
+            fi
+            echo "SUPABASE_PROJECT_REF=$derived" >> "$GITHUB_ENV"
+            echo "Derived project ref from the project URL: $derived"
+          else
+            echo "Using the supplied SUPABASE_PROJECT_REF."
+          fi
+
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "::warning::SUPABASE_DB_URL not set — falling back to a connection"
             echo "string assembled from the project ref. If the probes cannot connect,"
