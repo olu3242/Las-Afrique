@@ -1,0 +1,140 @@
+# Iteration standard — every iteration is an engine
+
+The rule that governs when an iteration may be called done.
+
+## The rule
+
+An iteration is **not** complete because UI exists, schema exists, an API exists,
+tests pass in isolation, or the code compiles.
+
+An iteration is complete only when its engine works through the full real path:
+
+```
+UI/Input → Validation → Domain logic → Persistence/Service → Authorization
+        → Output → UI/Consumer → Refresh/Replay
+```
+
+Each engine must prove two things:
+
+1. **Internal correctness** — the logic is right
+2. **Integration** — it composes with the engines before it
+
+No mocked success path may substitute for a real implementation path **where the
+actual dependency already exists**. Where the dependency genuinely does not exist
+yet, say so and report `ENGINE_PARTIAL` or `BLOCKED` — never certify around it.
+
+The purpose is to avoid ten individually "complete" pieces that do not compose
+into a working product.
+
+## Per-engine end-to-end paths
+
+| # | Engine | Path that must work |
+| --- | --- | --- |
+| 1 | Platform | identity → tenant DB → RLS → server access → protected route |
+| 2 | Trip onboarding | signup → profile → trip intake → travelers → validation → persistence → detail → refresh |
+| 3 | Country intelligence | destination → canonical lookup → data service → provenance/freshness → consumer |
+| 4 | Travel readiness | traveler + trip → country intelligence → documents → deterministic rules → readiness → next action → recompute on change |
+| 5 | Budget | trip → travelers → destination → assumptions → FX → deterministic calculation → persistence → UI → savings target → "Why this estimate?" |
+| 6 | AI planner | request → TripDraft → validation → country/readiness/budget tools → structured plan → persist → UI |
+| 7 | Dashboard | trip → country → readiness → budget → documents → timeline → dashboard |
+| 8 | Vault | user → validation → authorized upload → storage → metadata → association → view/download → delete → reconciliation |
+| 9 | Reminders | deadline → derivation → scheduled job → idempotency → send abstraction → audit → retry/reschedule |
+| 10 | Golden path | the complete MVP path, plus the adversarial cross-user path |
+
+## Cross-engine rule
+
+Every engine consumes the **real** preceding engine. Domain logic is never
+duplicated:
+
+- The planner *uses* the budget engine; it does not calculate budgets.
+- The dashboard *uses* the readiness engine; it does not calculate readiness.
+- Reminders *use* real deadlines; they do not keep a second deadline model.
+- Country rules come from country intelligence; they are not restated in prompts.
+- UI *consumes* domain results; it does not recreate business rules client-side.
+
+The AI may orchestrate and explain. It may **not** reproduce or recalculate
+authoritative country rules, readiness decisions, or budget figures. Certification
+must show model output preserves tool values exactly where required.
+
+## Engine contract
+
+Document each engine as:
+
+```
+INPUT → VALIDATION → PROCESSING → SOURCE OF TRUTH → OUTPUT → PERSISTENCE → CONSUMERS
+```
+
+Avoid unnecessary abstraction; make ownership explicit.
+
+## Certification per iteration
+
+| Layer | Requirement |
+| --- | --- |
+| Unit | Core deterministic logic |
+| Integration | Real dependencies, not stubs |
+| Database | Migrations, persistence, RLS where applicable |
+| Browser E2E | Real user flow wherever a UI exists |
+| Replay | Refresh or re-run produces stable persisted behaviour |
+| Negative path | Invalid and unauthorized usage fails correctly |
+| Cross-engine | The previous engine is actually consumed |
+
+## No false certification
+
+Do **not** report an iteration certified when any of these hold:
+
+- browser UI uses mocks while a backend exists
+- an API returns fixture data on the production path
+- database writes are never read back
+- RLS is untested
+- the only integration test replaces a service dependency with a stub
+- AI fabricates deterministic values
+- UI duplicates backend rules
+- refresh loses state
+- cross-user isolation is untested
+- the happy path works but the dependency chain does not
+
+Report `ENGINE_PARTIAL` or `BLOCKED` instead, naming the specific gap.
+
+## Report block
+
+Every `GOAL_REPORT` carries:
+
+```
+E2E_ENGINE_CERTIFICATION
+- Input path:
+- Validation:
+- Domain engine:
+- Source of truth:
+- Persistence:
+- Authorization:
+- Consumer/UI:
+- Refresh/replay:
+- Negative path:
+- Cross-engine dependency:
+- Browser E2E:
+- Result: PASS / PARTIAL / BLOCKED
+```
+
+An iteration may be declared complete only when
+`E2E_ENGINE_CERTIFICATION = PASS`.
+
+## Status
+
+| # | Engine | Result | Gap |
+| --- | --- | --- | --- |
+| 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
+| 1 | Platform | **ENGINE_PARTIAL** | DB, RLS and the protected-route gate are proven end to end. The `app → lib/supabase/server.ts → Supabase → row` path and the session refresh path are **unproven**: no Supabase project exists, and the local stack cannot run here (see below) |
+| 2–10 | — | Not started | Iteration 2 is `BLOCKED` on a real Supabase project |
+
+### Why Iteration 1 is partial
+
+Its tests reach Postgres directly through `pg`, executing the real policies with
+Supabase's own `auth.uid()`. That proves the database half of the chain
+honestly. It does not exercise the application's own client, PostgREST, or
+GoTrue, so "server access" and "refresh/session" in the Iteration 1 path remain
+unproven.
+
+Closing it requires a real Supabase project — hosted, or local via
+`supabase start`. The local route needs Docker images from `ghcr.io`, which the
+sandbox network policy denies at the gateway. `supabase/config.toml` is committed
+so `supabase start` works wherever the network permits.

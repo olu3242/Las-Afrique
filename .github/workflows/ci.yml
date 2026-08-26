@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Fast signal. Fails in under a minute on the mistakes that happen most.
+  # -------------------------------------------------------------------------
+  lint-and-types:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  # -------------------------------------------------------------------------
+  # Unit, schema and row-level-security suites.
+  #
+  # Runs against a real PostgreSQL service container rather than a mock: an RLS
+  # policy can only be verified by executing it. A mocked policy tests the mock,
+  # not the security boundary.
+  # -------------------------------------------------------------------------
+  test:
+    name: Tests (schema, RLS, bundle safety)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Built before the suite so the bundle-safety check can inspect real
+      # client chunks instead of skipping that assertion.
+      #
+      # Deliberately built with NO Supabase configuration: the marketing site
+      # must build on a fresh checkout, and protected routes must fail closed
+      # rather than fall open when unconfigured.
+      - name: Build (unconfigured)
+        run: npm run build
+
+      - name: Run test suites
+        run: npm test
+
+  # -------------------------------------------------------------------------
+  # Browser end-to-end against a production build.
+  #
+  # Middleware behaviour, prerendering and bundle contents all differ between
+  # dev and production, and the auth gate is exactly the kind of thing that has
+  # to be verified as it will actually ship.
+  # -------------------------------------------------------------------------
+  e2e:
+    name: Browser E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      # playwright.config.ts starts `npm run start` and waits for it.
+      - name: Run end-to-end suite
+        run: npm run test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
