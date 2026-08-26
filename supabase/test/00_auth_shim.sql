@@ -28,7 +28,16 @@ create table if not exists auth.users (
   raw_app_meta_data  jsonb,
   raw_user_meta_data jsonb,
   created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now()
+  updated_at         timestamptz not null default now(),
+  -- GoTrue scans these into non-nullable Go strings. Present here so the
+  -- seeded-user backfill is rehearsed rather than discovered in a hosted run.
+  confirmation_token      varchar(255),
+  recovery_token          varchar(255),
+  email_change_token_new  varchar(255),
+  email_change            varchar(255),
+  phone_change            varchar(255),
+  phone_change_token      varchar(255),
+  reauthentication_token  varchar(255)
 );
 
 -- Reads the subject claim the same way Supabase's does: from the request-scoped

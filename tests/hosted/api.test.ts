@@ -69,6 +69,36 @@ async function createConfirmedUser(db: Client): Promise<Session> {
   );
   const userId = rows[0].id;
 
+  // GoTrue reads its token columns into non-nullable Go strings. A row seeded
+  // without them leaves those NULL, the scan fails, and sign-in returns
+  // 500 "Database error querying schema" — which names GoTrue's schema, not the
+  // row, and sends you looking in the wrong place.
+  //
+  // The column set differs across GoTrue versions, so it is discovered rather
+  // than hardcoded: every character-typed, nullable column on auth.users that
+  // this row left NULL becomes the empty string GoTrue expects.
+  const { rows: nullable } = await db.query<{ column_name: string }>(
+    `select column_name
+     from information_schema.columns
+     where table_schema = 'auth'
+       and table_name = 'users'
+       and data_type in ('character varying', 'text')
+       and is_nullable = 'YES'
+       and column_name not in ('email', 'encrypted_password')`,
+  );
+
+  if (nullable.length > 0) {
+    // Identifiers cannot be parameterised, so they are quoted — and they come
+    // from information_schema, not from anything caller-supplied.
+    const assignments = nullable
+      .map(({ column_name }) => {
+        const quoted = `"${column_name.replace(/"/g, '""')}"`;
+        return `${quoted} = coalesce(${quoted}, '')`;
+      })
+      .join(", ");
+    await db.query(`update auth.users set ${assignments} where id = $1`, [userId]);
+  }
+
   const response = await fetch(
     `${supabaseUrl}/auth/v1/token?grant_type=password`,
     {
