@@ -207,8 +207,14 @@ test.describe("trip onboarding, signed in", () => {
     await expect(guideSection).toContainText(/not yet verified/i);
     await expect(guideSection).toContainText(/no verified source/i);
 
-    // And it never states a requirement it cannot source.
-    await expect(guideSection).toContainText(/verify/i);
+    // And it always points the traveller at the source rather than answering
+    // for it. Matched on the instruction, not one spelling of it: the
+    // unverified copy says "check the official source" and the verified copy
+    // says "verify before you travel" — asserting only the second failed a
+    // hosted run against a page that was doing the right thing.
+    await expect(guideSection).toContainText(
+      /verify before you travel|check the official source/i,
+    );
 
     await page.getByRole("link", { name: /open the full guide/i }).click();
     await expect(page).toHaveURL(/\/countries\/nigeria$/);
