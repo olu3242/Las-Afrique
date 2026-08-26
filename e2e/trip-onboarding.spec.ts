@@ -173,6 +173,29 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- country intelligence, consumed by the trip -------------------------
+    // Iteration 3's path ends here: the trip reads the real Country Data
+    // Service rather than restating anything about Nigeria itself.
+    await page.goto(tripUrl);
+    const guideSection = page.locator("section", {
+      has: page.getByRole("heading", { name: /nigeria guide/i }),
+    });
+    await expect(guideSection).toBeVisible();
+
+    // The seeded countries carry no verified source, so the guide must say so
+    // rather than render an empty section that reads as "nothing is required".
+    await expect(guideSection).toContainText(/not yet verified/i);
+    await expect(guideSection).toContainText(/no verified source/i);
+
+    // And it never states a requirement it cannot source.
+    await expect(guideSection).toContainText(/verify/i);
+
+    await page.getByRole("link", { name: /open the full guide/i }).click();
+    await expect(page).toHaveURL(/\/countries\/nigeria$/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "Nigeria",
+    );
+
     // --- traveller removal, and its refresh ---------------------------------
     await page.goto(tripUrl);
     await page.getByRole("button", { name: /remove ama mensah/i }).click();

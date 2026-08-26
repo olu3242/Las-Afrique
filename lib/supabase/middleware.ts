@@ -3,7 +3,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getPublicSupabaseEnv } from "@/lib/env";
 
 /** Route prefixes that require a signed-in user. */
-export const PROTECTED_PREFIXES = ["/dashboard", "/trips"] as const;
+export const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/trips",
+  // Country guides are world-readable at the database layer — entry
+  // requirements are not a secret, and country_profiles grants anon SELECT so
+  // the destination list renders before a session exists. The *route* is still
+  // gated because it renders in the authenticated shell, which offers "Sign
+  // out" and assumes a user. A public country guide is a marketing-site
+  // surface with its own design, not this one wearing the wrong header.
+  "/countries",
+] as const;
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

@@ -45,6 +45,15 @@ test.describe("protected routes", () => {
     await expect(page).toHaveURL(/\/login\?/);
   });
 
+  test("gates the country guide routes", async ({ page }) => {
+    // World-readable at the database layer, but rendered in the authenticated
+    // shell — so the route is gated even though the data is not secret.
+    await page.goto("/countries");
+    await expect(page).toHaveURL(/\/login\?/);
+    await page.goto("/countries/nigeria");
+    await expect(page).toHaveURL(/\/login\?/);
+  });
+
   test("leaves the public marketing route open", async ({ page }) => {
     const response = await page.goto("/");
     expect(response?.status()).toBe(200);

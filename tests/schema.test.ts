@@ -10,6 +10,7 @@ import {
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
+  expectCountryProvenanceConstraints,
   expectTenantConsistentTripKeys,
 } from "./support/schema-queries";
 
@@ -37,6 +38,7 @@ describe("migrations", () => {
       "0004_provision_profile_on_signup.sql",
       "0005_seed_country_identity.sql",
       "0006_tenant_consistent_foreign_keys.sql",
+      "0007_country_provenance_integrity.sql",
     ]);
   });
 
@@ -72,14 +74,111 @@ describe("migrations", () => {
     }
   });
 
+  describe("country provenance", () => {
+    // The safety property the PRD states in prose, asserted as behaviour. A
+    // hallucinated visa requirement makes someone miss a flight; these are the
+    // constraints that make storing one impossible rather than discouraged.
+    const claims = [
+      "visa_entry_info",
+      "passport_considerations",
+      "emergency_info",
+      "customs_notes",
+      "advisories",
+    ];
+
+    it.each(claims)("refuses a %s claim with no source", async (column) => {
+      await expect(
+        db.query(
+          `insert into public.country_profiles
+             (key, name, currency, sort_order, ${column})
+           values ('nowhere-${column}', 'Nowhere', 'XXX', ${900 + claims.indexOf(column)},
+                   '{"summary": "invented"}'::jsonb)`,
+        ),
+      ).rejects.toThrow(/claims_need_provenance/);
+    });
+
+    it("refuses to mark a country verified with no source", async () => {
+      await expect(
+        db.query(
+          `insert into public.country_profiles
+             (key, name, currency, sort_order, verification_state)
+           values ('nowhere-verified', 'Nowhere', 'XXX', 950, 'verified')`,
+        ),
+      ).rejects.toThrow(/verified_needs_provenance/);
+    });
+
+    it("accepts a claim that names its source", async () => {
+      await db.query(
+        `insert into public.country_profiles
+           (key, name, currency, sort_order, visa_entry_info,
+            source_name, source_url, last_verified_at, verification_state)
+         values ('somewhere', 'Somewhere', 'XXX', 951,
+                 '{"summary": "from a real source"}'::jsonb,
+                 'Ministry of Interior', 'https://example.gov/entry', now(),
+                 'verified')`,
+      );
+      const { rows } = await db.query(
+        `select source_url from public.country_profiles where key = 'somewhere'`,
+      );
+      expect(rows[0].source_url).toBe("https://example.gov/entry");
+    });
+
+    it("refuses a source that is not a fetchable URL", async () => {
+      // Provenance a traveller cannot open is provenance in name only.
+      await expect(
+        db.query(
+          `insert into public.country_profiles
+             (key, name, currency, sort_order, source_name, source_url,
+              last_verified_at)
+           values ('badsource', 'Bad', 'XXX', 952, 'Someone', 'ask my cousin',
+                   now())`,
+        ),
+      ).rejects.toThrow(/source_url_is_http/);
+    });
+
+    it("refuses a verification date in the future", async () => {
+      // Guards a timezone slip or a bad import from producing a guide that
+      // reads as permanently fresh.
+      await expect(
+        db.query(
+          `insert into public.country_profiles
+             (key, name, currency, sort_order, source_name, source_url,
+              last_verified_at)
+           values ('future', 'Future', 'XXX', 953, 'Someone',
+                   'https://example.gov/x', now() + interval '2 days')`,
+        ),
+      ).rejects.toThrow(/verified_at_not_future/);
+    });
+
+    it("still allows a country listed with no claims at all", async () => {
+      // How 0005 seeded eleven countries honestly before any source existed:
+      // naming a country is fact, stating its requirements is not.
+      await db.query(
+        `insert into public.country_profiles (key, name, currency, sort_order)
+         values ('listed-only', 'Listed Only', 'XXX', 954)`,
+      );
+      const { rows } = await db.query(
+        `select verification_state from public.country_profiles
+         where key = 'listed-only'`,
+      );
+      expect(rows[0].verification_state).toBe("unverified");
+    });
+  });
+
   it("re-runs the country seed without duplicating or clobbering verified data", async () => {
     // Migrations are append-only, but the seed is also the shape Iteration 3
     // will re-run. Applying it twice must not double the rows, and must not
     // overwrite requirement columns a later verified load has filled in.
+    // Carries provenance, because 0007 will not let it be stored without any —
+    // which is the point, and which caught this fixture the moment the
+    // constraint landed.
     await db.query(
       `update public.country_profiles
        set visa_entry_info = '{"summary": "verified later"}'::jsonb,
-           verification_state = 'verified'
+           verification_state = 'verified',
+           source_name = 'Test source',
+           source_url = 'https://example.org/ghana',
+           last_verified_at = now()
        where key = 'ghana'`,
     );
 
@@ -152,6 +251,10 @@ describe("migrations", () => {
     // Sharing it is the point: the hosted-only version of this check was
     // broken and nothing local could have told me.
     await expectProfileTrigger(db);
+  });
+
+  it("carries the country provenance constraints", async () => {
+    await expectCountryProvenanceConstraints(db);
   });
 
   it("ties every trip child row to the trip's owner", async () => {

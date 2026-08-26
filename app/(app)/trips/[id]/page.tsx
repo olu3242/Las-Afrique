@@ -7,6 +7,8 @@ import {
   TRIP_PURPOSES,
 } from "@/lib/trips/validation";
 import { RouteMotif } from "@/components/ui/route-motif";
+import { getCountryGuide } from "@/lib/country/service";
+import { CountryGuideCard } from "@/components/ui/country-guide-card";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -56,6 +58,11 @@ export default async function TripDetailPage({
   if (!detail) notFound();
 
   const { trip, destinationName, travelers } = detail;
+
+  // The trip consumes the real Country Data Service rather than restating
+  // anything about the destination itself. Null when the trip has no
+  // destination, or names one with no guide.
+  const guide = await getCountryGuide(trip.destination_country_key);
 
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
@@ -117,10 +124,30 @@ export default async function TripDetailPage({
         <AddTravelerForm tripId={trip.id} />
       </section>
 
+      {guide ? (
+        <section className="mt-14" aria-labelledby="country-guide">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+            <h2 id="country-guide" className="font-display text-xl text-ivory">
+              {guide.name} guide
+            </h2>
+            <Link
+              href={`/countries/${guide.key}`}
+              className="inline-block py-2 text-sm text-ivory/70 underline decoration-sunset underline-offset-4 transition-colors hover:text-ivory"
+            >
+              Open the full guide
+            </Link>
+          </div>
+
+          <div className="mt-5">
+            <CountryGuideCard guide={guide} />
+          </div>
+        </section>
+      ) : null}
+
       <p className="mt-14 border-t border-ivory/10 pt-6 text-sm leading-relaxed text-muted">
         Document readiness and your budget appear here once those engines are
-        built. Nothing on this page is an entry requirement — check the country
-        guide and verify before you travel.
+        built. Take Me Home surfaces requirements and is not the authority on
+        them — verify against the official source before you travel.
       </p>
     </div>
   );

@@ -4,6 +4,7 @@ import { databaseUrl, repoMigrationVersions, sslConfig } from "./connection";
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
+  expectCountryProvenanceConstraints,
   expectTenantConsistentTripKeys,
 } from "../support/schema-queries";
 
@@ -125,6 +126,11 @@ describe("hosted schema", () => {
       expect(row.visa_entry_info, row.key).toBeNull();
       expect(row.source_url, row.key).toBeNull();
     }
+  });
+
+  it("carries the country provenance constraints", async () => {
+    // 0007. A constraint only protects the project it was pushed to.
+    await expectCountryProvenanceConstraints(db);
   });
 
   it("ties every trip child row to the trip's owner", async () => {
