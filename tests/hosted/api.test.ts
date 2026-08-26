@@ -1,5 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { apiConfig } from "./connection";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Client } from "pg";
+import { apiConfig, databaseUrl } from "./connection";
 
 /**
  * The hosted HTTP path: Auth issues a session, PostgREST enforces RLS on it.
@@ -29,52 +30,65 @@ const PROBE_DOMAIN =
 interface Session {
   accessToken: string;
   userId: string;
+  email: string;
 }
 
-/** Signs up once. Every failure mode is named rather than collapsed into "failed". */
-async function signUp(): Promise<Session> {
+/**
+ * Creates a confirmed user directly, then signs in for a real session.
+ *
+ * Deliberately not the public signup endpoint. Signup is gated by the
+ * project's "Confirm email" setting: with it on, every attempt sends mail and
+ * returns no session, and a handful of attempts exhaust the email rate limit —
+ * so the probes could never obtain a token without changing a project setting.
+ *
+ * Seeding the row instead uses only what this workflow already holds: database
+ * access, and pgcrypto (enabled by migration 0001) to write a bcrypt hash GoTrue
+ * will verify. The session that comes back is a genuine one, issued by Auth,
+ * carrying real claims — which is the point, since what these probes verify is
+ * that PostgREST enforces the policies against a real token.
+ */
+async function createConfirmedUser(db: Client): Promise<Session> {
   const email = `probe-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}@${PROBE_DOMAIN}`;
   const password = `Pw-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
-  const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-    method: "POST",
-    headers: { apikey: publishableKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  const { rows } = await db.query<{ id: string }>(
+    `insert into auth.users (
+       instance_id, id, aud, role, email, encrypted_password,
+       email_confirmed_at, created_at, updated_at,
+       raw_app_meta_data, raw_user_meta_data
+     ) values (
+       '00000000-0000-0000-0000-000000000000', gen_random_uuid(),
+       'authenticated', 'authenticated', $1, crypt($2, gen_salt('bf')),
+       now(), now(), now(),
+       '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb
+     )
+     returning id`,
+    [email, password],
+  );
+  const userId = rows[0].id;
+
+  const response = await fetch(
+    `${supabaseUrl}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: { apikey: publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    },
+  );
   const body = await response.json().catch(() => ({}));
 
-  if (response.status === 429 || body.error_code === "over_email_send_rate_limit") {
+  if (!response.ok || !body.access_token) {
     throw new Error(
-      "Signup hit the project's email rate limit. Signup is still sending " +
-        "confirmation mail, which means email confirmation is enabled. Turn it " +
-        "off for this project (Authentication → Sign In / Providers → Confirm " +
-        "email) — the probes need a session immediately, and should not be " +
-        "sending mail at all.",
+      `Could not sign in the seeded user (${response.status}): ` +
+        `${JSON.stringify(body)}. The row was created directly in auth.users, so ` +
+        "this points at GoTrue rejecting the seeded shape rather than at any " +
+        "project setting.",
     );
   }
 
-  if (body.error_code === "email_address_invalid") {
-    throw new Error(
-      `The project rejected the probe address domain "${PROBE_DOMAIN}". Set ` +
-        "HOSTED_PROBE_EMAIL_DOMAIN to a domain this project accepts. Supabase " +
-        "refuses example.com and the reserved .invalid / .test TLDs.",
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(`Signup failed (${response.status}): ${JSON.stringify(body)}`);
-  }
-
-  if (!body.access_token) {
-    throw new Error(
-      "Signup returned no session. Email confirmation is enabled on this " +
-        "project; disable it so a signup yields a usable session.",
-    );
-  }
-
-  return { accessToken: body.access_token, userId: body.user.id };
+  return { accessToken: body.access_token, userId, email };
 }
 
 async function rest(
@@ -134,14 +148,27 @@ describe("hosted API — anonymous", () => {
 });
 
 describe("hosted API — two signed-in users", () => {
+  let db: Client;
   let alice: Session;
   let bob: Session;
 
-  // Signed up once for the whole suite. Per-test signup burns the project's
-  // email quota and turns a policy test into a rate-limit failure.
   beforeAll(async () => {
-    alice = await signUp();
-    bob = await signUp();
+    db = new Client({
+      connectionString: databaseUrl(),
+      ssl: { rejectUnauthorized: false },
+    });
+    await db.connect();
+    alice = await createConfirmedUser(db);
+    bob = await createConfirmedUser(db);
+  });
+
+  afterAll(async () => {
+    if (!db) return;
+    // Cascades clear the trips these users created.
+    await db.query(`delete from auth.users where email = any($1)`, [
+      [alice?.email, bob?.email].filter(Boolean),
+    ]);
+    await db.end();
   });
 
   it("issues a session that survives a follow-up request", async () => {

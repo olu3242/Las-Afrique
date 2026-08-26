@@ -13,10 +13,22 @@
 
 create schema if not exists auth;
 
+-- Mirrors the columns of GoTrue's auth.users that this project actually writes,
+-- so a seeded-user insert can be rehearsed locally instead of discovered in a
+-- hosted run. Not the full table — GoTrue's is much wider — just the subset the
+-- probes touch.
 create table if not exists auth.users (
-  id            uuid primary key default gen_random_uuid(),
-  email         text unique,
-  created_at    timestamptz not null default now()
+  instance_id        uuid,
+  id                 uuid primary key default gen_random_uuid(),
+  aud                varchar(255),
+  role               varchar(255),
+  email              varchar(255) unique,
+  encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
+  raw_app_meta_data  jsonb,
+  raw_user_meta_data jsonb,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
 );
 
 -- Reads the subject claim the same way Supabase's does: from the request-scoped
