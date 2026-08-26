@@ -37,6 +37,20 @@ export function databaseUrl(): string {
   return `postgresql://postgres:${encodeURIComponent(password)}@db.${ref}.supabase.co:5432/postgres`;
 }
 
+/**
+ * TLS settings for the hosted connection.
+ *
+ * Supabase requires TLS, so that is the default. A connection string that opts
+ * out explicitly (`sslmode=disable`) is honoured, which is what makes it
+ * possible to rehearse this suite against a local cluster before pointing it at
+ * the real project.
+ */
+export function sslConfig(url: string): false | { rejectUnauthorized: boolean } {
+  return /[?&]sslmode=disable(&|$)/.test(url)
+    ? false
+    : { rejectUnauthorized: false };
+}
+
 export function apiConfig(): { supabaseUrl: string; publishableKey: string } {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey =

@@ -145,6 +145,33 @@ Run them yourself against a project you are pointed at:
 npm run test:hosted
 ```
 
+#### Rehearsing before you point at a real project
+
+The probes and the migration push can both be exercised against a throwaway
+local cluster first, which is worth doing before any run that mutates a hosted
+project:
+
+```bash
+npm run db:start
+createdb -h 127.0.0.1 -p 55432 -U postgres rehearsal
+psql -h 127.0.0.1 -p 55432 -U postgres -d rehearsal -f supabase/test/00_auth_shim.sql
+
+URL="postgresql://postgres@127.0.0.1:55432/rehearsal?sslmode=disable"
+npx supabase db push --db-url "$URL" --include-all --skip-vault --dry-run
+npx supabase db push --db-url "$URL" --include-all --skip-vault
+
+SUPABASE_DB_URL="$URL" \
+NEXT_PUBLIC_SUPABASE_URL=http://unused.invalid \
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=unused \
+  npx vitest run --config vitest.hosted.config.ts \
+    tests/hosted/schema.test.ts tests/hosted/rls.test.ts
+```
+
+The auth shim stands in for the `auth` schema Supabase provides. `sslmode=disable`
+is honoured only because the connection string asks for it — Supabase requires
+TLS, so the hosted path is unaffected. The API suite is excluded from a
+rehearsal: it needs PostgREST and GoTrue, which a bare cluster does not have.
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request:
