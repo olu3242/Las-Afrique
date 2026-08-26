@@ -14,7 +14,8 @@
     "db:start": "scripts/test-db.sh start",
     "db:stop": "scripts/test-db.sh stop",
     "test:e2e": "playwright test",
-    "test:all": "npm run test && npm run test:e2e"
+    "test:all": "npm run test && npm run test:e2e",
+    "test:hosted": "vitest run --config vitest.hosted.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

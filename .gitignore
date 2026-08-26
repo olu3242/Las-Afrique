@@ -52,3 +52,6 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /.playwright/
+
+# supabase cli scratch
+/supabase/.temp/
