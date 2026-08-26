@@ -78,13 +78,25 @@ async function createConfirmedUser(db: Client): Promise<Session> {
   // than hardcoded: every character-typed, nullable column on auth.users that
   // this row left NULL becomes the empty string GoTrue expects.
   const { rows: nullable } = await db.query<{ column_name: string }>(
-    `select column_name
-     from information_schema.columns
-     where table_schema = 'auth'
-       and table_name = 'users'
-       and data_type in ('character varying', 'text')
-       and is_nullable = 'YES'
-       and column_name not in ('email', 'encrypted_password')`,
+    `select c.column_name
+     from information_schema.columns c
+     where c.table_schema = 'auth'
+       and c.table_name = 'users'
+       and c.data_type in ('character varying', 'text')
+       and c.is_nullable = 'YES'
+       and c.column_name not in ('email', 'encrypted_password')
+       -- Unique columns must stay NULL. auth.users.phone is UNIQUE, and NULLs
+       -- do not collide while empty strings do: setting two seeded users' phone
+       -- to '' violates users_phone_key on the second insert.
+       and not exists (
+         select 1
+         from pg_index i
+         join pg_attribute a
+           on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
+         where i.indrelid = 'auth.users'::regclass
+           and i.indisunique
+           and a.attname = c.column_name
+       )`,
   );
 
   if (nullable.length > 0) {

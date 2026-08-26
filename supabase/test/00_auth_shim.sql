@@ -37,7 +37,11 @@ create table if not exists auth.users (
   email_change            varchar(255),
   phone_change            varchar(255),
   phone_change_token      varchar(255),
-  reauthentication_token  varchar(255)
+  reauthentication_token  varchar(255),
+  -- UNIQUE, exactly as GoTrue declares it. Present so the backfill's exclusion
+  -- of unique columns is rehearsed: two seeded users both set to '' would
+  -- collide here, which is how it failed hosted.
+  phone                   text unique
 );
 
 -- Reads the subject claim the same way Supabase's does: from the request-scoped
