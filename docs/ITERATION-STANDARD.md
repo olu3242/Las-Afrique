@@ -128,7 +128,8 @@ An iteration may be declared complete only when
 | 3 | Country intelligence | **Pending hosted certification** | Built: canonical lookup, freshness derivation, the Country Data Service, and two consumers. `0007` makes a requirement claim unstorable without a named source and a checked date |
 | 4 | Travel readiness | **Pending hosted certification** | Deterministic engine consuming the real country service. Measures what we hold; reports requirement satisfaction as explicitly unknown while no destination is verified |
 | 5 | Budget | **Pending hosted certification** | Deterministic engine over stated rates. Rates carry a basis — illustrative or verified — under the same provenance rule as country claims, and every figure derived from a placeholder says so on screen |
-| 6–10 | — | Not started | Each blocked on its predecessor |
+| 6 | AI planner | **ENGINE_PARTIAL** | Tool snapshot, contract, verifier, refusal path and UI are real and tested. The model call is not: no provider is configured for this project — no SDK, no key — so `planTrip` reports unavailable rather than returning a stub plan |
+| 7–10 | — | Not started | Each blocked on its predecessor |
 
 ### Iteration 2 — what was observed
 
@@ -159,6 +160,33 @@ them was the schema:
 | 2 | Trip never saved | A real defect. React re-syncs an `<input>`'s `defaultValue` after its action, but not a `<select>`'s, so a trip refused for a bad date came back with the destination silently cleared |
 | 3 | Traveller assertion | My locator. `getByText` matched both the list entry and the remove button's `sr-only` label — correct markup, imprecise test |
 | 4 | — | Green |
+
+### Why Iteration 6 is partial
+
+The dependency genuinely does not exist. There is no model SDK in
+`package.json` and no provider key in the environment, so there is nothing to
+call. Per the rule at the top of this document, that is reported rather than
+worked around.
+
+What a stub would have bought is the appearance of a finished iteration, and
+it would have proved nothing about the only question that matters here:
+whether a *real* model's output survives the verifier. So `planTrip` returns
+`unavailable`, and the trip page says so.
+
+What is real, and tested against the failures a model actually produces:
+
+- the tool snapshot, assembled from the real budget, readiness and country
+  engines, which is the complete set of things a plan may say;
+- the verifier, which rejects a figure no engine produced (including
+  `1,450` written with a separator, and `4,800` against a target of `4,820`),
+  a citation to a ref that does not exist, and any requirement language at all
+  for a destination with no verified guide;
+- the refusal path — a plan that fails is discarded, not shown with a warning,
+  because a model that broke the contract once is not more trustworthy in its
+  next sentence.
+
+Wiring a provider in is a small change behind `setPlannerProvider`. Certifying
+it needs a key this project does not have.
 
 Two things are still deliberately *not* claimed:
 

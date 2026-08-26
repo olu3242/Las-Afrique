@@ -184,6 +184,18 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- planner, and its refusal to invent -------------------------------
+    // Iteration 6. No model provider is configured for this project, so what
+    // is provable in a browser is that the planner says so plainly rather
+    // than rendering a plan nobody generated.
+    const planner = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Your plan$/ }),
+    });
+    await expect(planner).toBeVisible();
+    await expect(planner).toContainText(/needs a language model provider/i);
+    // And that the deterministic engines are explicitly unaffected by it.
+    await expect(planner).toContainText(/unaffected/i);
+
     // --- budget, consumed by the trip ---------------------------------------
     // Iteration 5. The trip was created with 2 travellers and real dates, so
     // the engine has enough to compute from.

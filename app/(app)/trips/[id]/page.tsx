@@ -13,6 +13,9 @@ import { getTripReadiness } from "@/lib/readiness/service";
 import { ReadinessPanel } from "@/components/ui/readiness-panel";
 import { getTripBudget } from "@/lib/budget/service";
 import { BudgetPanel } from "@/components/ui/budget-panel";
+import { buildPlannerTools } from "@/lib/planner/tools";
+import { planTrip } from "@/lib/planner/service";
+import { PlannerPanel } from "@/components/ui/planner-panel";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -77,6 +80,12 @@ export default async function TripDetailPage({
   // them and derives bar widths; it does not compute an estimate.
   const budget = await getTripBudget(trip);
 
+  // The planner may only speak in terms of what the engines produced. The
+  // snapshot is the complete set of things a plan is allowed to say, and a
+  // plan that strays outside it is discarded rather than shown.
+  const plannerTools = await buildPlannerTools(trip, travelers);
+  const plan = await planTrip(plannerTools);
+
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
     { term: "Travelling from", value: [trip.origin_city, trip.origin_country].filter(Boolean).join(", ") || "Not set" },
@@ -130,6 +139,15 @@ export default async function TripDetailPage({
         </h2>
         <div className="mt-5">
           <ReadinessPanel readiness={readiness} />
+        </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="planner">
+        <h2 id="planner" className="font-display text-xl text-ivory">
+          Your plan
+        </h2>
+        <div className="mt-5">
+          <PlannerPanel outcome={plan} tools={plannerTools} />
         </div>
       </section>
 
