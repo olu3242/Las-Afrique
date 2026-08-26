@@ -375,6 +375,58 @@ test.describe("trip onboarding, signed in", () => {
       /application\/pdf/,
     );
 
+    // Actually store something.
+    //
+    // This block used to end at the `accept` attribute above — it checked the
+    // empty state and the shape of the form, and never uploaded. A missing
+    // bucket, a storage policy that never applied, or a signed URL that did not
+    // resolve would all have passed it, which is why Iteration 8 was demoted
+    // from PASS: the metadata half was certified and the storage half was not.
+    await documents.locator('input[type="file"]').setInputFiles({
+      name: "passport-scan.pdf",
+      mimeType: "application/pdf",
+      // A real PDF header — the bucket filters on MIME type, and an upload
+      // that passes because nothing checked is the failure mode being fixed.
+      buffer: Buffer.from(
+        "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+          "2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+        "utf8",
+      ),
+    });
+    await documents.getByRole("button", { name: /^upload$/i }).click();
+
+    const stored = documents.getByRole("listitem").filter({
+      hasText: "passport-scan.pdf",
+    });
+    await expect(stored).toHaveCount(1);
+
+    // Survives a reload, so it is a stored row rather than optimistic UI.
+    await page.reload();
+    await expect(stored).toHaveCount(1);
+    await expect(stored).toContainText(/application\/pdf/);
+
+    // The link is signed rather than public. Fetching it through the browser's
+    // own context proves the signature resolves to the bytes — the panel
+    // renders "Link unavailable" instead when signing fails, so a broken
+    // storage path shows up here rather than passing quietly.
+    const open = stored.getByRole("link", { name: /open passport-scan\.pdf/i });
+    await expect(open).toBeVisible();
+    const signedUrl = await open.getAttribute("href");
+    expect(signedUrl).toBeTruthy();
+    expect(signedUrl!).toContain("token=");
+
+    const fetched = await page.request.get(signedUrl!);
+    expect(fetched.status()).toBe(200);
+    expect((await fetched.body()).subarray(0, 5).toString()).toBe("%PDF-");
+
+    // And the traveller can remove it again.
+    await documents
+      .getByRole("button", { name: /delete passport-scan\.pdf/i })
+      .click();
+    await expect(stored).toHaveCount(0);
+    await page.reload();
+    await expect(documents).toContainText(/no documents yet/i);
+
     // --- traveller removal, and its refresh ---------------------------------
     await page.goto(tripUrl);
     await page.getByRole("button", { name: /remove ama mensah/i }).click();

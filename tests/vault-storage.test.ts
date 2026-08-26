@@ -7,6 +7,10 @@ import {
   createUser,
   dropDatabase,
 } from "@/supabase/test/harness";
+import {
+  expectVaultBucket,
+  expectVaultStoragePolicies,
+} from "./support/schema-queries";
 
 const DB = "tmh_test_vault";
 
@@ -33,35 +37,14 @@ describe("vault storage", () => {
     await dropDatabase(DB);
   });
 
-  it("creates a private bucket", async () => {
-    // Public would make a passport scan reachable by URL alone.
-    const { rows } = await db.query<{ public: boolean; file_size_limit: string }>(
-      `select public, file_size_limit from storage.buckets where id = 'vault'`,
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].public).toBe(false);
-    expect(Number(rows[0].file_size_limit)).toBe(15_728_640);
-  });
-
-  it("accepts only document mime types", async () => {
-    const { rows } = await db.query<{ allowed_mime_types: string[] }>(
-      `select allowed_mime_types from storage.buckets where id = 'vault'`,
-    );
-    expect(rows[0].allowed_mime_types).toContain("application/pdf");
-    expect(rows[0].allowed_mime_types).toContain("image/jpeg");
-    // No archives, no executables, nothing that is not a travel document.
-    expect(rows[0].allowed_mime_types).not.toContain("application/zip");
+  it("creates a private bucket that accepts only document mime types", async () => {
+    // Shared with the hosted suite: the same query runs against the real
+    // project, where it proves 0009 was applied rather than merely correct.
+    await expectVaultBucket(db);
   });
 
   it("covers all four verbs with a policy", async () => {
-    const { rows } = await db.query<{ cmd: string }>(
-      `select cmd from pg_policies
-       where schemaname = 'storage' and tablename = 'objects'
-         and policyname like 'vault_%'`,
-    );
-    expect(new Set(rows.map((r) => r.cmd))).toEqual(
-      new Set(["SELECT", "INSERT", "UPDATE", "DELETE"]),
-    );
+    await expectVaultStoragePolicies(db);
   });
 
   describe("ownership by path", () => {

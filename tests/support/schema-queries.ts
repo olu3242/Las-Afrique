@@ -136,3 +136,47 @@ export async function expectCountryProvenanceConstraints(
     expect(names, `${expected} should exist`).toContain(expected);
   }
 }
+
+/**
+ * The vault bucket and its policies.
+ *
+ * Shared for the same reason as everything else here, and for one more: the
+ * local tier proves migration 0009 is correct, and only the hosted tier proves
+ * it was ever applied to the project the app actually talks to. Those are
+ * different claims, and running one assertion against both is what keeps them
+ * from being confused for each other — which is precisely the confusion that
+ * let Iteration 8 read PASS on evidence that never touched storage.
+ */
+export async function expectVaultBucket(db: Client): Promise<void> {
+  const { rows } = await db.query<{
+    public: boolean;
+    file_size_limit: string;
+    allowed_mime_types: string[];
+  }>(
+    `select public, file_size_limit, allowed_mime_types
+       from storage.buckets where id = 'vault'`,
+  );
+
+  expect(rows, "migration 0009 did not create the vault bucket").toHaveLength(1);
+  // Public would make a passport scan reachable by URL alone.
+  expect(rows[0].public).toBe(false);
+  expect(Number(rows[0].file_size_limit)).toBe(15_728_640);
+  expect(rows[0].allowed_mime_types).toContain("application/pdf");
+  expect(rows[0].allowed_mime_types).toContain("image/jpeg");
+  // No archives, no executables, nothing that is not a travel document.
+  expect(rows[0].allowed_mime_types).not.toContain("application/zip");
+}
+
+/** Every verb on storage.objects must be covered by a vault policy. */
+export async function expectVaultStoragePolicies(db: Client): Promise<void> {
+  const { rows } = await db.query<{ cmd: string }>(
+    `select cmd from pg_policies
+      where schemaname = 'storage' and tablename = 'objects'
+        and policyname like 'vault_%'`,
+  );
+
+  const verbs = new Set(rows.map((r) => r.cmd.toUpperCase()));
+  for (const verb of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+    expect(verbs, `no vault storage policy for ${verb}`).toContain(verb);
+  }
+}
