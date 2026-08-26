@@ -22,7 +22,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 5 | Deterministic budget engine | PASS |
 | 6 | AI planner | ENGINE_PARTIAL — no provider configured |
 | 7 | Dashboard | PASS |
-| 8 | Document vault | ENGINE_PARTIAL — storage path unexercised |
+| 8 | Document vault | PASS |
 | 9 | Reminders | PASS |
 | 10 | Golden path | PASS |
 
