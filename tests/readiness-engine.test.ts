@@ -283,3 +283,55 @@ describe("readiness engine", () => {
     });
   });
 });
+
+describe("passport item copy", () => {
+  /**
+   * The exact wording of every passport branch, pinned locally.
+   *
+   * These strings were previously asserted only in the hosted browser suite,
+   * where a mismatch costs a full run to discover and the test data decides
+   * which branch is even reachable. The engine is pure, so the copy belongs
+   * here — every branch checked on every commit, in milliseconds.
+   *
+   * The default trip runs to 2027-01-08, so "during the trip" means an expiry
+   * after today and before that.
+   */
+  function titlesFor(passportExpiresOn: string | null): string[] {
+    return deriveReadiness(
+      input({ travelers: [{ ...ama, passportExpiresOn }] }),
+    ).items.map((i) => i.title);
+  }
+
+  it("says what is missing when there is no expiry date", () => {
+    expect(titlesFor(null)).toContain("Passport expiry for Ama Mensah");
+  });
+
+  it("says so when the passport has already expired", () => {
+    expect(titlesFor("2020-01-01")).toContain(
+      "Ama Mensah's passport has expired",
+    );
+  });
+
+  it("says so when it expires during the trip", () => {
+    expect(titlesFor("2026-12-20")).toContain(
+      "Ama Mensah's passport expires during this trip",
+    );
+  });
+
+  it("records it when it covers the whole trip", () => {
+    expect(titlesFor("2030-01-01")).toContain(
+      "Passport recorded for Ama Mensah",
+    );
+  });
+
+  it("never calls a covering passport ready to travel", () => {
+    // The engine checks arithmetic, not entry rules. Many destinations require
+    // validity beyond the return date and it does not know which.
+    const r = deriveReadiness(
+      input({ travelers: [{ ...ama, passportExpiresOn: "2030-01-01" }] }),
+    );
+    const passport = r.items.find((i) => i.kind === "passport");
+    expect(passport?.detail).not.toMatch(/ready to travel/i);
+    expect(passport?.detail).toMatch(/check the country guide/i);
+  });
+});

@@ -284,8 +284,16 @@ test.describe("trip onboarding, signed in", () => {
     });
     await expect(readiness).toBeVisible();
 
-    // Ama's passport covers the trip, so one checkable item is recorded.
-    await expect(readiness).toContainText("Passport recorded for Ama Mensah");
+    // The traveller row reached the engine and came back as an item.
+    //
+    // Asserted structurally, not as a sentence. Which sentence appears depends
+    // on which branch the engine takes — Ama is added here without an expiry
+    // date, so this is the "we cannot check it" branch, not the "recorded"
+    // one. Pinning branch copy here put the exact wording in the one place
+    // that can only be run against the hosted project; the copy for every
+    // branch is pinned in tests/readiness-engine.test.ts instead, which runs
+    // on every commit.
+    await expect(readiness).toContainText("Ama Mensah");
 
     // And the caveat that stops the figure reading as "ready to travel".
     await expect(readiness).toContainText(
