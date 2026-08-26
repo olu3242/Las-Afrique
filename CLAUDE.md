@@ -22,7 +22,7 @@ locally — see `docs/ITERATION-STANDARD.md` for what that required.
 | 2 | Auth and trip onboarding | **PASS** |
 | 3 | Country intelligence | Built — awaiting hosted certification |
 | 4 | Travel readiness | Built — awaiting hosted certification |
-| 5 | Deterministic budget engine | Not started |
+| 5 | Deterministic budget engine | Built — awaiting hosted certification |
 
 Each iteration ships on its own branch and PR. Phase 2 scope (group
 coordination, referrals, native apps, post-arrival concierge) stays out

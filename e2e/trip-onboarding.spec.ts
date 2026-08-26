@@ -173,6 +173,26 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- budget, consumed by the trip ---------------------------------------
+    // Iteration 5. The trip was created with 2 travellers and real dates, so
+    // the engine has enough to compute from.
+    const budget = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Budget$/ }),
+    });
+    await expect(budget).toBeVisible();
+    await expect(budget).toContainText(/planning target/i);
+
+    // The figures rest on illustrative placeholders, and the panel has to say
+    // so where the number is — not in a footnote.
+    await expect(budget).toContainText(/illustrative figures/i);
+
+    // "Why this estimate?" discloses the assumptions and the working.
+    await budget.getByText(/why this estimate\?/i).click();
+    await expect(budget).toContainText(/2 travellers/i);
+    await expect(budget).toContainText(/per person ×/i);
+    // Stamped with the engine version, so a figure traces to its rules.
+    await expect(budget).toContainText(/cost-engine\//);
+
     // --- readiness, consumed by the trip ------------------------------------
     // Iteration 4. The engine is pure, so what a browser adds is proof that
     // the real trip and traveller rows reach it and that it recomputes.

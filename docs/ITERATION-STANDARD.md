@@ -127,7 +127,8 @@ An iteration may be declared complete only when
 | 2 | Trip onboarding | **PASS** | Certified against the live project: the whole path driven in a browser, plus the adversarial cross-user case. Run [32999396356](https://github.com/olu3242/Las-Afrique/actions/runs/32999396356) on `6e3c08b` |
 | 3 | Country intelligence | **Pending hosted certification** | Built: canonical lookup, freshness derivation, the Country Data Service, and two consumers. `0007` makes a requirement claim unstorable without a named source and a checked date |
 | 4 | Travel readiness | **Pending hosted certification** | Deterministic engine consuming the real country service. Measures what we hold; reports requirement satisfaction as explicitly unknown while no destination is verified |
-| 5–10 | — | Not started | Each blocked on its predecessor |
+| 5 | Budget | **Pending hosted certification** | Deterministic engine over stated rates. Rates carry a basis — illustrative or verified — under the same provenance rule as country claims, and every figure derived from a placeholder says so on screen |
+| 6–10 | — | Not started | Each blocked on its predecessor |
 
 ### Iteration 2 — what was observed
 

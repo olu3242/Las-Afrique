@@ -11,6 +11,8 @@ import { getCountryGuide } from "@/lib/country/service";
 import { CountryGuideCard } from "@/components/ui/country-guide-card";
 import { getTripReadiness } from "@/lib/readiness/service";
 import { ReadinessPanel } from "@/components/ui/readiness-panel";
+import { getTripBudget } from "@/lib/budget/service";
+import { BudgetPanel } from "@/components/ui/budget-panel";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -71,6 +73,10 @@ export default async function TripDetailPage({
   // the rows it describes.
   const readiness = await getTripReadiness(trip, travelers);
 
+  // Every figure here comes from the deterministic engine. The panel renders
+  // them and derives bar widths; it does not compute an estimate.
+  const budget = await getTripBudget(trip);
+
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
     { term: "Travelling from", value: [trip.origin_city, trip.origin_country].filter(Boolean).join(", ") || "Not set" },
@@ -124,6 +130,15 @@ export default async function TripDetailPage({
         </h2>
         <div className="mt-5">
           <ReadinessPanel readiness={readiness} />
+        </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="budget">
+        <h2 id="budget" className="font-display text-xl text-ivory">
+          Budget
+        </h2>
+        <div className="mt-5">
+          <BudgetPanel budget={budget} />
         </div>
       </section>
 

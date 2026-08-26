@@ -48,6 +48,29 @@ export type AccommodationTier =
 
 export type VerificationState = "unverified" | "verified" | "stale";
 
+export type CostCategory =
+  | "flights"
+  | "accommodation"
+  | "food"
+  | "local_transport"
+  | "visa_and_documents"
+  | "travel_insurance"
+  | "activities"
+  | "family_and_shopping"
+  | "contingency";
+
+export type CostUnit =
+  | "per_person_per_trip"
+  | "per_person_per_night"
+  | "per_trip"
+  | "percent_of_subtotal";
+
+/**
+ * Whether a rate is a planning placeholder or something with a source behind
+ * it. Every figure derived from an `illustrative` rate must say so on screen.
+ */
+export type AssumptionBasis = "illustrative" | "verified";
+
 export interface ProfileRow {
   id: string;
   display_name: string | null;
@@ -73,6 +96,24 @@ export interface CountryProfileRow {
   last_verified_at: string | null;
   verification_state: VerificationState;
   data_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CostAssumptionRow {
+  id: string;
+  /** Null applies to any destination without its own rate for the category. */
+  country_key: string | null;
+  category: CostCategory;
+  unit: CostUnit;
+  currency: string;
+  amount_low: number;
+  amount_high: number;
+  basis: AssumptionBasis;
+  note: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  last_verified_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -175,6 +216,7 @@ export interface Database {
     Tables: {
       profiles: Table<ProfileRow>;
       country_profiles: Table<CountryProfileRow>;
+      cost_assumptions: Table<CostAssumptionRow>;
       trips: Table<TripRow>;
       travelers: Table<TravelerRow>;
       document_records: Table<DocumentRecordRow>;
@@ -191,6 +233,9 @@ export interface Database {
       document_kind: DocumentKind;
       accommodation_tier: AccommodationTier;
       verification_state: VerificationState;
+      cost_category: CostCategory;
+      cost_unit: CostUnit;
+      assumption_basis: AssumptionBasis;
     };
   };
 }
@@ -207,4 +252,7 @@ export const TENANT_TABLES = [
 ] as const;
 
 /** Tables that are public reference data rather than tenant-scoped. */
-export const REFERENCE_TABLES = ["country_profiles"] as const;
+export const REFERENCE_TABLES = [
+  "country_profiles",
+  "cost_assumptions",
+] as const;
