@@ -40,11 +40,23 @@ function storageUrl(path: string): string {
   return `${supabaseUrl}/storage/v1/object/${BUCKET}/${path}`;
 }
 
+/**
+ * Every object this suite puts in the bucket, with the session that owns it.
+ *
+ * Cleanup has to go back through the Storage API: the hosted project carries a
+ * `storage.protect_delete()` trigger that refuses `delete from storage.objects`
+ * outright ("Direct deletion from storage tables is not allowed"). The local
+ * shim has no such trigger, which is exactly why the first hosted run was the
+ * thing that found it.
+ */
+const created: Array<{ session: Session; path: string }> = [];
+
 async function upload(
   session: Session,
   path: string,
   bytes: Buffer = PDF_BYTES,
 ): Promise<Response> {
+  created.push({ session, path });
   return fetch(storageUrl(path), {
     method: "POST",
     headers: {
@@ -113,15 +125,11 @@ describe("hosted vault storage", () => {
     if (!db) return;
     // Objects first — deleting the user does not cascade into storage, and a
     // probe that leaves passport-shaped files in the bucket is a probe that
-    // slowly fills it.
-    for (const who of [alice, bob]) {
-      if (!who) continue;
-      await db.query(
-        `delete from storage.objects
-          where bucket_id = $1 and (storage.foldername(name))[1] = $2`,
-        [BUCKET, who.userId],
-      );
+    // slowly fills it. Through the API, not SQL: see `created` above.
+    for (const { session, path } of created) {
+      await remove(session, path).catch(() => undefined);
     }
+
     await db.query(`delete from auth.users where email = any($1)`, [
       [alice?.email, bob?.email].filter(Boolean),
     ]);
@@ -233,8 +241,14 @@ describe("hosted vault storage", () => {
     const attempt = await remove(bob, alicePath);
     expect(attempt.status).toBeGreaterThanOrEqual(400);
 
-    const stillThere = await download(alice, alicePath);
-    expect(stillThere.status).toBe(200);
+    // The row, not a re-fetch. A cached 200 from the CDN would report the
+    // object as surviving whether or not it did, which is the whole point of
+    // this probe — see the delete test below.
+    const { rows } = await db.query(
+      `select 1 from storage.objects where bucket_id = $1 and name = $2`,
+      [BUCKET, alicePath],
+    );
+    expect(rows, "another user's delete removed the object").toHaveLength(1);
   });
 
   // --- metadata cannot outrun the policies ---------------------------------
@@ -269,8 +283,25 @@ describe("hosted vault storage", () => {
     const deleted = await remove(alice, alicePath);
     expect(deleted.status, await deleted.clone().text()).toBeLessThan(300);
 
-    const gone = await download(alice, alicePath);
-    expect(gone.status).toBeGreaterThanOrEqual(400);
+    // Deliberately *not* re-fetching the object URL to prove it is gone.
+    //
+    // That was the first version, and the hosted run returned 200 after a
+    // successful delete: earlier probes in this suite fetched that exact URL,
+    // and Supabase serves storage reads through a CDN, so a cached 200 outlives
+    // the object by up to its cache-control lifetime. The assertion was
+    // measuring cache behaviour and calling it authorization — the same class
+    // of mistake as a test that agrees with the bug it is meant to catch.
+    //
+    // These two are authoritative instead. The row is the source of truth, and
+    // signing is computed per request rather than served from an edge.
+    const { rows } = await db.query(
+      `select 1 from storage.objects where bucket_id = $1 and name = $2`,
+      [BUCKET, alicePath],
+    );
+    expect(rows, "the object should be gone from storage").toHaveLength(0);
+
+    const signed = await signUrl(alice, alicePath);
+    expect(signed.status).toBeGreaterThanOrEqual(400);
 
     const rowDeleted = await rest(
       `vault_files?storage_path=eq.${encodeURIComponent(alicePath)}`,
