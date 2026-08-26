@@ -30,8 +30,8 @@ standing in for a dependency that does not exist is exactly the case it names.
 | 5 | Deterministic budget engine | **PASS** |
 | 6 | AI planner | **ENGINE_PARTIAL** — no provider configured |
 | 7 | Dashboard | **PASS** |
-| 8 | Document vault | **PASS** |
-| 9 | Reminders | **PASS** |
+| 8 | Document vault | ENGINE_PARTIAL — storage path unexercised |
+| 9 | Reminders | ENGINE_PARTIAL — scheduling not wired |
 | 10 | Golden path | **PASS** |
 
 Each iteration ships on its own branch and PR. Phase 2 scope (group

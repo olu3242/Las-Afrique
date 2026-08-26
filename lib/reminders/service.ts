@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { ReminderRow, TravelerRow, TripRow } from "@/lib/supabase/types";
 import { getTripReadiness } from "@/lib/readiness/service";
+import { getTrip } from "@/lib/trips/service";
 import { deriveReminders } from "./derive";
 import {
   recordOnlySender,
@@ -186,4 +187,36 @@ export async function listTripReminders(
 
   if (error) throw new Error(`Could not load reminders: ${error.message}`);
   return data ?? [];
+}
+
+
+/**
+ * Re-derive and store this trip's reminders after something that can change a
+ * deadline.
+ *
+ * This is the link that was missing. `scheduleTripReminders` existed, was
+ * tested, and was never called by anything — so no reminder was ever created,
+ * the panel always rendered its empty state, and the browser test asserted
+ * that state and passed. An engine whose scheduling step nothing invokes is
+ * not an engine; it is a library.
+ *
+ * Safe to call after every mutation because the dedupe key comes from the
+ * deadline rather than the run, so re-running over unchanged state inserts
+ * nothing.
+ *
+ * A scheduling failure does not fail the user's action. Adding a traveller is
+ * what they asked for; reminders are derived from it. The failure is not
+ * hidden either — the panel lists actual rows, so nothing scheduled shows as
+ * nothing scheduled rather than as a silent success.
+ */
+export async function rescheduleTripReminders(
+  tripId: string,
+): Promise<ScheduleOutcome | null> {
+  try {
+    const detail = await getTrip(tripId);
+    if (!detail) return null;
+    return await scheduleTripReminders(detail.trip, detail.travelers);
+  } catch {
+    return null;
+  }
 }

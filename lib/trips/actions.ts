@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { field, type ActionState } from "@/lib/forms";
 import { listCountryOptions } from "./service";
+import { rescheduleTripReminders } from "@/lib/reminders/service";
 import {
   todayIso,
   validateTravelerInput,
@@ -159,6 +160,9 @@ export async function addTraveler(
     };
   }
 
+  // A traveller carries a passport expiry, which is a deadline. Re-derive.
+  await rescheduleTripReminders(tripId);
+
   revalidatePath(`/trips/${tripId}`);
   revalidatePath("/dashboard");
   return { status: "idle" };
@@ -174,6 +178,9 @@ export async function removeTraveler(form: FormData): Promise<void> {
   // Matches nothing when the row is another user's — the delete policy's
   // `using (user_id = auth.uid())` is what makes that true.
   await supabase.from("travelers").delete().eq("id", travelerId);
+
+  // Their deadlines go with them.
+  await rescheduleTripReminders(tripId);
 
   revalidatePath(`/trips/${tripId}`);
   revalidatePath("/dashboard");

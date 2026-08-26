@@ -38,7 +38,7 @@ into a working product.
 | 6 | AI planner | request → TripDraft → validation → country/readiness/budget tools → structured plan → persist → UI |
 | 7 | Dashboard | trip → country → readiness → budget → documents → timeline → dashboard |
 | 8 | Vault | user → validation → authorized upload → storage → metadata → association → view/download → delete → reconciliation |
-| 9 | Reminders | deadline → derivation → scheduled job → idempotency → send abstraction → audit → retry/reschedule |
+| 9 | Reminders | **ENGINE_PARTIAL** | Derivation, idempotency, the send abstraction, retry and audit are real and tested. The scheduled-job link is not: nothing invoked `scheduleTripReminders`, so no reminder was ever created and the panel always showed its empty state — which the browser test then asserted, passing while proving the engine never ran. Found by review, not by me. Being fixed in `fix/wire-reminder-scheduling` |
 | 10 | Golden path | the complete MVP path, plus the adversarial cross-user path |
 
 ## Cross-engine rule
@@ -130,8 +130,8 @@ An iteration may be declared complete only when
 | 5 | Budget | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Deterministic over stated rates; every figure resting on a placeholder says so on screen |
 | 6 | AI planner | **ENGINE_PARTIAL** | Tool snapshot, contract, verifier, refusal path and UI are real and tested. The model call is not: no provider is configured for this project — no SDK, no key — so `planTrip` reports unavailable rather than returning a stub plan |
 | 7 | Dashboard | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Composes every preceding engine and computes none of them |
-| 8 | Vault | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Private bucket, ownership by object path, short-lived signed downloads, reconciliation that reports drift |
-| 9 | Reminders | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Deadlines from the readiness engine; idempotency is a unique constraint on a deadline-derived key |
+| 8 | Vault | **ENGINE_PARTIAL** | The metadata half is certified: `vault_files` through PostgREST, RLS, and ownership by object path. The storage half is not. The hosted browser coverage checks the empty state and the file input's `accept` attribute, and never uploads, reads the metadata back after a refresh, follows a signed download, deletes, or tests another user against a stored object — so a bucket or storage-policy fault would go undetected. Raised in review on #11; the row said PASS on strictly less evidence than that word implies |
+| 9 | Reminders | **ENGINE_PARTIAL** | Derivation, idempotency, the send abstraction, retry and audit are real and tested against a real database. The scheduled-job link is not: nothing invoked `scheduleTripReminders`, so no reminder was ever created, the panel always showed its empty state, and the browser test asserted that state — passing while proving the engine never ran |
 | 10 | Golden path | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Complete MVP path, adversarial second signed-in user on every surface, and the signed-out path |
 
 ### Iteration 2 — what was observed
