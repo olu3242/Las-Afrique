@@ -184,6 +184,48 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- the dashboard composing every engine -------------------------------
+    // Iteration 7. Each panel here is rendered from the engine that owns it;
+    // the dashboard computes none of them.
+    const focusSection = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Lagos$/ }),
+    });
+    await expect(focusSection).toBeVisible();
+
+    // The route motif's four stages, carrying real state.
+    //
+    // Addressed through the list's accessible name rather than by searching the
+    // section for the words. A stage title is a bare text node between a glyph
+    // and an sr-only status, so no element's text is exactly "Plan" — and a
+    // loose match for "Budget" would also hit the budget panel's own heading
+    // in the same section.
+    const timeline = focusSection.getByRole("list", { name: /trip timeline/i });
+    const stages = timeline.getByRole("listitem");
+    await expect(stages).toHaveCount(4);
+
+    for (const stage of ["Plan", "Prepare", "Budget", "Go home"]) {
+      await expect(
+        stages.filter({ hasText: stage }),
+        `the timeline should carry a ${stage} stage`,
+      ).toHaveCount(1);
+    }
+
+    // Exactly one stage may be in progress, or the motif shows two "you are
+    // here" markers.
+    await expect(stages.filter({ hasText: "In progress" })).toHaveCount(1);
+
+    // Readiness and the country guide, from their own engines.
+    await expect(focusSection).toContainText(/counts what we hold/i);
+    await expect(focusSection).toContainText(/not yet verified/i);
+
+    // The budget figure, labelled illustrative on the dashboard too — the
+    // caveat cannot be left behind on the trip page.
+    await expect(focusSection).toContainText(/planning target/i);
+    await expect(focusSection).toContainText(/illustrative figures/i);
+
+    await focusSection.getByRole("link", { name: /open this trip/i }).click();
+    await expect(page).toHaveURL(new RegExp(`${tripUrl.split("/").pop()}$`));
+
     // Back to the trip page. The dashboard check above navigated away, and
     // everything below asserts on sections that only exist here.
     //
@@ -193,9 +235,30 @@ test.describe("trip onboarding, signed in", () => {
     // rather than inheriting whatever the previous block left behind.
     await page.goto(tripUrl);
 
+
+    // --- planner, and its refusal to invent -------------------------------
+    // Iteration 6. No model provider is configured for this project, so what
+    // is provable in a browser is that the planner says so plainly rather
+    // than rendering a plan nobody generated.
+    const planner = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Your plan$/ }),
+    });
+    await expect(planner).toBeVisible();
+    await expect(planner).toContainText(/needs a language model provider/i);
+    // And that the deterministic engines are explicitly unaffected by it.
+    await expect(planner).toContainText(/unaffected/i);
+
     // --- budget, consumed by the trip ---------------------------------------
     // Iteration 5. The trip was created with 2 travellers and real dates, so
     // the engine has enough to compute from.
+    // Iteration 9's consumer. A brand-new trip has no document deadlines yet,
+    // so the panel must say that rather than render an empty list.
+    const reminders = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Reminders$/ }),
+    });
+    await expect(reminders).toBeVisible();
+    await expect(reminders).toContainText(/nothing is scheduled yet/i);
+
     const budget = page.locator("section", {
       has: page.getByRole("heading", { name: /^Budget$/ }),
     });
@@ -221,8 +284,16 @@ test.describe("trip onboarding, signed in", () => {
     });
     await expect(readiness).toBeVisible();
 
-    // Ama's passport covers the trip, so one checkable item is recorded.
-    await expect(readiness).toContainText("Passport recorded for Ama Mensah");
+    // The traveller row reached the engine and came back as an item.
+    //
+    // Asserted structurally, not as a sentence. Which sentence appears depends
+    // on which branch the engine takes — Ama is added here without an expiry
+    // date, so this is the "we cannot check it" branch, not the "recorded"
+    // one. Pinning branch copy here put the exact wording in the one place
+    // that can only be run against the hosted project; the copy for every
+    // branch is pinned in tests/readiness-engine.test.ts instead, which runs
+    // on every commit.
+    await expect(readiness).toContainText("Ama Mensah");
 
     // And the caveat that stops the figure reading as "ready to travel".
     await expect(readiness).toContainText(
@@ -260,6 +331,28 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page).toHaveURL(/\/countries\/nigeria$/);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
       "Nigeria",
+    );
+
+    // --- the document vault -------------------------------------------------
+    // Iteration 8. Back to the trip first: the previous block followed the
+    // guide link to /countries/nigeria, so this was asserting a trip-page
+    // section against the country page. The comment used to claim we were
+    // "still on the trip page", which is exactly the kind of premise a test
+    // should not assert on trust.
+    await page.goto(tripUrl);
+
+    const documents = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Documents$/ }),
+    });
+    await expect(documents).toBeVisible();
+    await expect(documents).toContainText(/no documents yet/i);
+    // The privacy property stated where the traveller can see it.
+    await expect(documents).toContainText(/reachable only by you/i);
+    await expect(documents).toContainText(/links expire/i);
+    // The picker offers document types, not anything at all.
+    await expect(documents.locator('input[type="file"]')).toHaveAttribute(
+      "accept",
+      /application\/pdf/,
     );
 
     // --- traveller removal, and its refresh ---------------------------------

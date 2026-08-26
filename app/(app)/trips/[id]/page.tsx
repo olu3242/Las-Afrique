@@ -13,6 +13,13 @@ import { getTripReadiness } from "@/lib/readiness/service";
 import { ReadinessPanel } from "@/components/ui/readiness-panel";
 import { getTripBudget } from "@/lib/budget/service";
 import { BudgetPanel } from "@/components/ui/budget-panel";
+import { listTripReminders } from "@/lib/reminders/service";
+import { RemindersPanel } from "@/components/ui/reminders-panel";
+import { buildPlannerTools } from "@/lib/planner/tools";
+import { planTrip } from "@/lib/planner/service";
+import { PlannerPanel } from "@/components/ui/planner-panel";
+import { listVaultFiles } from "@/lib/vault/service";
+import { VaultPanel } from "@/components/ui/vault-panel";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -76,6 +83,19 @@ export default async function TripDetailPage({
   // Every figure here comes from the deterministic engine. The panel renders
   // them and derives bar widths; it does not compute an estimate.
   const budget = await getTripBudget(trip);
+  // Derived from readiness deadlines by the reminders engine; this page keeps
+  // no second model of what is due.
+  const reminders = await listTripReminders(trip.id);
+
+  // The planner may only speak in terms of what the engines produced. The
+  // snapshot is the complete set of things a plan is allowed to say, and a
+  // plan that strays outside it is discarded rather than shown.
+  const plannerTools = await buildPlannerTools(trip, travelers);
+  const plan = await planTrip(plannerTools);
+
+  // Metadata under RLS, bytes under a storage policy keyed on the object's
+  // own path. Links are signed per request and expire shortly after.
+  const documents = await listVaultFiles(trip.id);
 
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
@@ -133,12 +153,37 @@ export default async function TripDetailPage({
         </div>
       </section>
 
+      <section className="mt-14" aria-labelledby="planner">
+        <h2 id="planner" className="font-display text-xl text-ivory">
+          Your plan
+        </h2>
+        <div className="mt-5">
+          <PlannerPanel outcome={plan} tools={plannerTools} />
+        </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="reminders">
+        <h2 id="reminders" className="font-display text-xl text-ivory">
+          Reminders
+        </h2>
+        <RemindersPanel reminders={reminders} />
+      </section>
+
       <section className="mt-14" aria-labelledby="budget">
         <h2 id="budget" className="font-display text-xl text-ivory">
           Budget
         </h2>
         <div className="mt-5">
           <BudgetPanel budget={budget} />
+        </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="documents">
+        <h2 id="documents" className="font-display text-xl text-ivory">
+          Documents
+        </h2>
+        <div className="mt-5">
+          <VaultPanel files={documents} tripId={trip.id} />
         </div>
       </section>
 

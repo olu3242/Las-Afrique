@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { listTrips } from "@/lib/trips/service";
+import { getDashboard } from "@/lib/dashboard/service";
+import { TripTimeline } from "@/components/ui/trip-timeline";
+import { ReadinessPanel } from "@/components/ui/readiness-panel";
+import { CountryGuideCard } from "@/components/ui/country-guide-card";
 
 export const metadata: Metadata = {
   title: "Your trips — Take Me Home",
@@ -28,9 +31,10 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Read through the same server client, so RLS scopes this to the caller. No
-  // `.eq("user_id", …)` is written here — the policy is the filter.
-  const trips = await listTrips();
+  // Composed from every preceding engine. Read through the same server client,
+  // so RLS scopes it to the caller — no `.eq("user_id", …)` is written here,
+  // because the policy is the filter.
+  const { trips, focus } = await getDashboard();
 
   return (
     <div className="mx-auto max-w-content px-5 py-12 sm:px-8 sm:py-16">
@@ -59,7 +63,72 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <>
-          <div className="mt-10 flex items-center justify-between gap-4">
+          {focus ? (
+            <section className="mt-12" aria-labelledby="focus-trip">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                <h2 id="focus-trip" className="font-display text-xl text-ivory">
+                  {focus.trip.destination_city ??
+                    focus.destination?.name ??
+                    "Your next trip"}
+                </h2>
+                <Link
+                  href={`/trips/${focus.trip.id}`}
+                  className="inline-block py-2 text-sm text-ivory/70 underline decoration-sunset underline-offset-4 transition-colors hover:text-ivory"
+                >
+                  Open this trip
+                </Link>
+              </div>
+
+              <div className="mt-6">
+                <TripTimeline stages={focus.timeline} />
+              </div>
+
+              <div className="mt-8 grid gap-6 lg:grid-cols-2">
+                <div>
+                  <h3 className="text-label">Readiness</h3>
+                  <div className="mt-4">
+                    <ReadinessPanel readiness={focus.readiness} />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                  <div>
+                    <h3 className="text-label">Budget</h3>
+                    {focus.budget.estimate.unavailableReason ? (
+                      <p className="mt-4 rounded-2xl border border-ivory/15 bg-indigo-900/40 px-5 py-4 text-sm leading-relaxed text-muted">
+                        {focus.budget.estimate.unavailableReason}
+                      </p>
+                    ) : (
+                      <div className="mt-4 rounded-2xl border border-ivory/15 bg-indigo-900/40 p-5">
+                        {/* The engine's figures, rendered. Nothing recomputed here. */}
+                        <p className="text-data text-2xl text-ivory">
+                          {focus.budget.estimate.planningTarget.toLocaleString("en-US")}{" "}
+                          {focus.budget.estimate.currency}
+                        </p>
+                        <p className="mt-1 text-sm text-muted">
+                          Planning target
+                          {focus.budget.estimate.restsOnIllustrativeRates
+                            ? " · illustrative figures"
+                            : ""}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {focus.destination ? (
+                    <div>
+                      <h3 className="text-label">Country guide</h3>
+                      <div className="mt-4">
+                        <CountryGuideCard guide={focus.destination} />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <div className="mt-14 flex items-center justify-between gap-4">
             <h2 className="font-display text-xl text-ivory">
               {trips.length === 1 ? "1 trip" : `${trips.length} trips`}
             </h2>

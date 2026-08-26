@@ -5,6 +5,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./", import.meta.url)),
+      // See tests/support/server-only-stub.ts: keeps the build-time guard
+      // intact while letting server modules be unit-tested.
+      "server-only": fileURLToPath(
+        new URL("./tests/support/server-only-stub.ts", import.meta.url),
+      ),
     },
   },
   test: {

@@ -218,8 +218,13 @@ describe("row-level security", () => {
         ],
         [
           "vault_files",
+          // The storage path leads with $2 (the inserting user) so that
+          // 0009's vault_files_path_under_owner check passes and the
+          // composite foreign key is what refuses the row. Without this the
+          // insert is still refused, but by the earlier constraint — which
+          // would leave the thing this test exists to prove unexercised.
           `insert into public.vault_files (trip_id, user_id, storage_path, file_name)
-           values ($1, $2, 'probe/cross-owner.pdf', 'cross-owner.pdf')`,
+           values ($1, $2::uuid, $2::text || '/cross-owner.pdf', 'cross-owner.pdf')`,
         ],
       ];
 
