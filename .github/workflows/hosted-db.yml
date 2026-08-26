@@ -72,17 +72,50 @@ jobs:
       - name: Show migrations this run will apply
         run: ls -1 supabase/migrations/
 
+      # Skipped when SUPABASE_DB_URL is supplied: pushing by connection string
+      # needs no link, and avoids guessing direct-vs-pooler hosts entirely.
       - name: Link to the project
-        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        if: env.SUPABASE_DB_URL == ''
+        run: |
+          npx supabase link \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --password "$SUPABASE_DB_PASSWORD"
 
-      # `db push` applies pending migrations in order. It does not reset, drop or
-      # recreate anything — that is deliberate, and `db reset` must never appear
-      # in this workflow.
+      # Shows exactly what the next step will apply, before it applies it.
+      - name: Preview migrations (dry run)
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase db push --db-url "$SUPABASE_DB_URL" \
+              --include-all --skip-vault --dry-run
+          else
+            npx supabase db push --linked --include-all --skip-vault --dry-run
+          fi
+
+      # Applies pending migrations in order. It does not reset, drop or recreate
+      # anything — that is deliberate, and `db reset` must never appear here.
+      #
+      # --skip-vault matters: without it, `db push` updates the project's vault
+      # secrets from config.toml before running migrations. config.toml here is
+      # the stock CLI default, so that would rewrite project configuration this
+      # workflow has no business touching.
+      #
+      # --include-seed is likewise omitted: no seed data is pushed.
       - name: Apply migrations
-        run: npx supabase db push --include-all
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase db push --db-url "$SUPABASE_DB_URL" \
+              --include-all --skip-vault
+          else
+            npx supabase db push --linked --include-all --skip-vault
+          fi
 
       - name: Hosted migration history
-        run: npx supabase migration list || true
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase migration list --db-url "$SUPABASE_DB_URL" || true
+          else
+            npx supabase migration list --linked || true
+          fi
 
       - name: Prove hosted schema, RLS and two-user isolation
         run: npm run test:hosted
