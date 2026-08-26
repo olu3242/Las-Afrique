@@ -38,7 +38,16 @@ export function TripTimeline({ stages }: { stages: TimelineStage[] }) {
         <RouteMotif animated={false} stops={[]} />
       </div>
 
-      <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/*
+        Named, not anonymous. A screen reader announcing "list, 4 items" beside
+        three other panels is not much help, and the name also makes the
+        stages addressable — the title is a bare text node between a glyph and
+        an sr-only status, so nothing else identifies them.
+      */}
+      <ol
+        aria-label="Trip timeline"
+        className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
         {stages.map((stage) => (
           <li
             key={stage.id}

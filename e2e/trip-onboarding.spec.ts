@@ -193,15 +193,26 @@ test.describe("trip onboarding, signed in", () => {
     await expect(focusSection).toBeVisible();
 
     // The route motif's four stages, carrying real state.
+    //
+    // Addressed through the list's accessible name rather than by searching the
+    // section for the words. A stage title is a bare text node between a glyph
+    // and an sr-only status, so no element's text is exactly "Plan" — and a
+    // loose match for "Budget" would also hit the budget panel's own heading
+    // in the same section.
+    const timeline = focusSection.getByRole("list", { name: /trip timeline/i });
+    const stages = timeline.getByRole("listitem");
+    await expect(stages).toHaveCount(4);
+
     for (const stage of ["Plan", "Prepare", "Budget", "Go home"]) {
-      await expect(focusSection.getByText(stage, { exact: true })).toBeVisible();
+      await expect(
+        stages.filter({ hasText: stage }),
+        `the timeline should carry a ${stage} stage`,
+      ).toHaveCount(1);
     }
 
     // Exactly one stage may be in progress, or the motif shows two "you are
     // here" markers.
-    await expect(
-      focusSection.getByText("— In progress", { exact: false }),
-    ).toHaveCount(1);
+    await expect(stages.filter({ hasText: "In progress" })).toHaveCount(1);
 
     // Readiness and the country guide, from their own engines.
     await expect(focusSection).toContainText(/counts what we hold/i);
