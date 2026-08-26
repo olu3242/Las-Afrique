@@ -15,8 +15,8 @@ built behind it in numbered iterations, one branch and PR each:
 | Iteration | Scope | State |
 | --- | --- | --- |
 | 0 | Landing page and waitlist | PASS |
-| 1 | Platform foundation — route separation, Supabase, schema, RLS | ENGINE_PARTIAL |
-| 2 | Auth and trip onboarding | BLOCKED — needs a real Supabase project |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | ENGINE_PARTIAL — hosted DB certified |
+| 2 | Auth and trip onboarding | Not started |
 | 3 | Country intelligence | Not started |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
@@ -119,12 +119,18 @@ order with `supabase db push`, and then proves the resulting state:
 - all four policy verbs per tenant table
 - `anon` holding no grant on any tenant table
 - two-user isolation via direct SQL, executing the real policies
-- two-user isolation via the HTTP API, through real signups and PostgREST
+- two-user isolation via the HTTP API, through real sessions and PostgREST
 
 It never resets, drops or recreates anything. `supabase db reset` must not
 appear in that workflow.
 
-Required repository secrets:
+The credentials are **GitHub Environment secrets**, held in the environment named
+`Los Afrique`, and the job declares `environment: Los Afrique` to read them. A
+job without that declaration resolves every one of them to an empty string and
+fails preflight — which is exactly how the first two dispatches failed. Do not
+duplicate them as repository secrets to work around it; declare the environment.
+
+Secrets required:
 
 | Secret | Required | Purpose |
 | --- | --- | --- |
@@ -135,11 +141,13 @@ Required repository secrets:
 | `SUPABASE_DB_URL` | **yes** | Session pooler string from the Connect dialog, pasted **verbatim including the `[YOUR-PASSWORD]` placeholder** — the workflow substitutes `SUPABASE_DB_PASSWORD` with correct percent-encoding. Required: the direct host `db.<ref>.supabase.co` is IPv6-only and unreachable from GitHub runners |
 | `SUPABASE_PROJECT_REF` | no | Derived from the project URL unless set explicitly |
 
-The API probes sign up real users, so the test project needs **email
-confirmation disabled** (Authentication → Sign In / Providers → Confirm email).
-With it on, every signup sends mail and returns no session, and a run ends in
-the project's email rate limit. The probe reports that as the configuration
-problem it is rather than passing hollowly.
+The API probes create their two users through the Auth admin API
+(`POST /auth/v1/admin/users` with `email_confirm: true`), then exchange the
+credentials for real sessions. That route needs no change to the project's
+email-confirmation setting, sends no mail, and is unaffected by the email rate
+limit — all of which public signup runs into. The service-role key it needs is
+read at run time from the Management API using `SUPABASE_ACCESS_TOKEN`; it is
+not a stored secret and is never printed. Each run deletes the users it created.
 
 `HOSTED_PROBE_EMAIL_DOMAIN` is optional: Supabase rejects `example.com` and the
 reserved `.invalid` / `.test` TLDs, so set it if the project refuses the default

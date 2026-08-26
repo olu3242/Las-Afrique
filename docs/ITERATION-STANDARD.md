@@ -123,8 +123,8 @@ An iteration may be declared complete only when
 | # | Engine | Result | Gap |
 | --- | --- | --- | --- |
 | 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
-| 1 | Platform | **ENGINE_PARTIAL** | Hosted DB converged and proven: migrations applied to the project, and hosted schema (6/6) + hosted RLS two-user isolation (6/6) + anonymous API (3/3) all pass against it. Still unproven: the `app → lib/supabase/server.ts → Supabase → row` path and session refresh, which need Iteration 2's auth UI |
-| 2 | Trip onboarding | **BLOCKED** | No auth UI exists yet, and the hosted project has no schema until `hosted-db.yml` runs |
+| 1 | Platform | **ENGINE_PARTIAL** | Hosted DB certified: migrations `0001`–`0003` applied to the project, and hosted schema (6/6), RLS (6/6) and API (6/6) all pass against it — including two signed-in users isolated through PostgREST. Still unproven: the `app route → lib/supabase/server.ts → Supabase → row → rendered UI` path and cookie session refresh, which need Iteration 2's auth UI |
+| 2 | Trip onboarding | Not started | Unblocked — the hosted database is certified. The remaining work is the iteration's own: auth UI, trip form, and the server-side read path |
 | 3–10 | — | Not started | Each blocked on its predecessor |
 
 ### Why Iteration 1 is partial
@@ -140,11 +140,17 @@ applied the migrations and proved the resulting state — schema, forced RLS,
 policy coverage, grants, and two-user isolation executed through the project's
 own `auth.uid()`.
 
-What it has not yet proven is the signed-in half of the HTTP path. Those probes
-sign up real users, and the project still has email confirmation enabled, so
-signup sends mail and returns no session — every attempt ends in the project's
-email rate limit rather than a usable token. That is a project setting, not a
-code defect, and the probe says so explicitly rather than passing.
+The signed-in half of the HTTP path is proven too. The probes create two
+confirmed users through the Auth admin API, exchange their credentials for real
+sessions, and drive PostgREST with those tokens: one user's trip is visible to
+its owner, absent for the other, and an insert forging the other's `user_id` is
+refused. GoTrue, PostgREST and the policies are all in that path.
+
+What remains unproven is the application's own half. Nothing yet reaches
+Supabase through `lib/supabase/server.ts` from a rendered route, and no cookie
+session is issued or refreshed by the app's middleware — the probes use bearer
+tokens directly. Those are Iteration 2's to build and to certify, and until a
+route exercises them the Iteration 1 path is partial.
 
 ### The local/hosted distinction
 
