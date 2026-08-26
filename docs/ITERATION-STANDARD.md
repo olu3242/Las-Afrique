@@ -123,8 +123,9 @@ An iteration may be declared complete only when
 | # | Engine | Result | Gap |
 | --- | --- | --- | --- |
 | 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
-| 1 | Platform | **ENGINE_PARTIAL** | DB, RLS and the protected-route gate are proven end to end. The `app → lib/supabase/server.ts → Supabase → row` path and the session refresh path are **unproven**: no Supabase project exists, and the local stack cannot run here (see below) |
-| 2–10 | — | Not started | Iteration 2 is `BLOCKED` on a real Supabase project |
+| 1 | Platform | **ENGINE_PARTIAL** | DB, RLS and the protected-route gate are proven end to end. The `app → lib/supabase/server.ts → Supabase → row` path and session refresh are **unproven** until the hosted workflow has run |
+| 2 | Trip onboarding | **BLOCKED** | No auth UI exists yet, and the hosted project has no schema until `hosted-db.yml` runs |
+| 3–10 | — | Not started | Each blocked on its predecessor |
 
 ### Why Iteration 1 is partial
 
@@ -134,7 +135,17 @@ honestly. It does not exercise the application's own client, PostgREST, or
 GoTrue, so "server access" and "refresh/session" in the Iteration 1 path remain
 unproven.
 
-Closing it requires a real Supabase project — hosted, or local via
-`supabase start`. The local route needs Docker images from `ghcr.io`, which the
-sandbox network policy denies at the gateway. `supabase/config.toml` is committed
-so `supabase start` works wherever the network permits.
+`.github/workflows/hosted-db.yml` is the path to closing it: it applies the
+migrations to the real project and proves the resulting state, including
+two-user isolation through PostgREST. It needs repository secrets, and it has
+not yet been run.
+
+### The local/hosted distinction
+
+A green local suite means the migrations and policies are **correct**. It does
+not mean they were **applied** anywhere. Those are different claims, and only
+the hosted tier supports the second one.
+
+This distinction is the most common way an iteration gets falsely certified: the
+tests are real, the database is real, and the conclusion is still wrong because
+the real database is not the one the application talks to.

@@ -1,0 +1,101 @@
+name: Hosted database
+
+# Manual only. Applying migrations to a hosted project is not something that
+# should happen on every push, and never as a side effect of opening a PR.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to run migrations against the hosted project'
+        required: true
+        default: ""
+
+concurrency:
+  # Never let two runs push migrations to the same project at once.
+  group: hosted-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  converge:
+    name: Apply migrations and prove hosted state
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+
+    steps:
+      - name: Check the confirmation input
+        if: inputs.confirm != 'apply'
+        run: |
+          echo "::error::Refusing to run. Re-dispatch with confirm = apply."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Fail early and name what is missing, rather than surfacing an opaque
+      # CLI error three steps later.
+      - name: Preflight — required secrets
+        run: |
+          missing=()
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing+=("SUPABASE_ACCESS_TOKEN")
+          [ -n "$SUPABASE_PROJECT_REF" ]  || missing+=("SUPABASE_PROJECT_REF")
+          [ -n "$SUPABASE_DB_PASSWORD" ]  || missing+=("SUPABASE_DB_PASSWORD")
+          [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] || missing+=("NEXT_PUBLIC_SUPABASE_URL")
+          [ -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ] || missing+=("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            echo "Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL not set — falling back to a connection"
+            echo "string assembled from the project ref. If the probes cannot connect,"
+            echo "copy the exact string from the project's Connect dialog into that secret."
+          fi
+          echo "Preflight OK."
+
+      - name: Show migrations this run will apply
+        run: ls -1 supabase/migrations/
+
+      - name: Link to the project
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # `db push` applies pending migrations in order. It does not reset, drop or
+      # recreate anything — that is deliberate, and `db reset` must never appear
+      # in this workflow.
+      - name: Apply migrations
+        run: npx supabase db push --include-all
+
+      - name: Hosted migration history
+        run: npx supabase migration list || true
+
+      - name: Prove hosted schema, RLS and two-user isolation
+        run: npm run test:hosted
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Hosted database convergence"
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Repo migrations | $(ls -1 supabase/migrations/*.sql | wc -l) |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

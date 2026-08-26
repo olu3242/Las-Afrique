@@ -178,6 +178,20 @@ Tests run against a real PostgreSQL cluster with the real policy predicates
 (`npm run db:start && npm test`). Do not mock the database in RLS tests — a
 mocked policy tests the mock, not the boundary.
 
+Two tiers, and they prove different things:
+
+| Suite | Runs against | Proves |
+| --- | --- | --- |
+| `npm test` | Throwaway local Postgres | The migrations and policies are correct |
+| `npm run test:hosted` | The real Supabase project | They were actually applied there, and the API enforces them |
+
+The local tier can be green while the hosted project is empty. Only the hosted
+tier certifies a hosted engine — see `docs/ITERATION-STANDARD.md`.
+
+`tests/hosted/**` is excluded from the default run and never has a fallback
+connection default: a missing credential fails loudly rather than letting a
+suite pass against the wrong database, or none.
+
 Extract a component when it establishes a pattern Phase 1 will reuse. Do not
 build a design system ahead of need, and do not abstract one-off components.
 

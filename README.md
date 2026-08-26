@@ -103,6 +103,48 @@ npm run test:e2e
 On a machine with a pre-installed browser, point Playwright at it with
 `PLAYWRIGHT_CHROMIUM_PATH` instead of downloading one.
 
+### Hosted database
+
+The local suites prove the migrations and policies are *correct*. They cannot
+prove they were **applied to the project the app actually talks to** — that
+needs the hosted project itself.
+
+`.github/workflows/hosted-db.yml` closes that gap. It is manual only
+(`workflow_dispatch`, confirmation required), applies `supabase/migrations/` in
+order with `supabase db push`, and then proves the resulting state:
+
+- every repo migration present in the hosted migration history
+- exactly the expected tables
+- RLS enabled **and forced** on every tenant table
+- all four policy verbs per tenant table
+- `anon` holding no grant on any tenant table
+- two-user isolation via direct SQL, executing the real policies
+- two-user isolation via the HTTP API, through real signups and PostgREST
+
+It never resets, drops or recreates anything. `supabase db reset` must not
+appear in that workflow.
+
+Required repository secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | CLI authentication |
+| `SUPABASE_PROJECT_REF` | Which project to link |
+| `SUPABASE_DB_PASSWORD` | Migration push |
+| `SUPABASE_DB_URL` | *Preferred.* Exact connection string from the Connect dialog — projects differ on direct vs pooled hosts, so an assembled string is a guess |
+| `NEXT_PUBLIC_SUPABASE_URL` | API probes |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | API probes |
+
+The API probes sign up real users, so the test project needs **email
+confirmation disabled** — otherwise signup returns no session and the suite
+fails with that explanation rather than passing hollowly.
+
+Run them yourself against a project you are pointed at:
+
+```bash
+npm run test:hosted
+```
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request:
@@ -126,7 +168,8 @@ closed rather than fall open when unconfigured.
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint via `next lint` |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest — schema, RLS and bundle-safety suites |
+| `npm test` | Vitest — schema, RLS and bundle-safety suites (local Postgres) |
+| `npm run test:hosted` | Vitest — hosted schema, RLS and API probes against a real project |
 | `npm run test:e2e` | Playwright — browser end-to-end against a production build |
 | `npm run test:all` | Both suites |
 | `npm run db:start` / `db:stop` | Local Postgres for the database tests |
