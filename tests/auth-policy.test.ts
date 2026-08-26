@@ -36,6 +36,8 @@ describe("protected routes", () => {
     expect(isProtectedPath("/dashboard")).toBe(true);
     expect(isProtectedPath("/trips/new")).toBe(true);
     expect(isProtectedPath("/trips/8f2c-abc")).toBe(true);
+    expect(isProtectedPath("/countries")).toBe(true);
+    expect(isProtectedPath("/countries/nigeria")).toBe(true);
   });
 
   it("leaves the public routes open", () => {
@@ -49,6 +51,7 @@ describe("protected routes", () => {
     // "/trips" must not make "/tripsomething" protected — or, worse, leave a
     // real product route open because the prefix matched loosely.
     expect(isProtectedPath("/tripsomething")).toBe(false);
+    expect(isProtectedPath("/countriesomething")).toBe(false);
     expect(isProtectedPath("/dashboards-public")).toBe(false);
   });
 

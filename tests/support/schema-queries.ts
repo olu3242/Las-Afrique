@@ -110,3 +110,29 @@ export async function expectTenantConsistentTripKeys(db: Client): Promise<void> 
     );
   }
 }
+
+/**
+ * A country claim cannot be stored without provenance.
+ *
+ * Run against both databases for the same reason the others are: a constraint
+ * that exists in a migration but was never pushed is a constraint that is not
+ * protecting anything, and only the hosted assertion can tell the difference.
+ */
+export async function expectCountryProvenanceConstraints(
+  db: Client,
+): Promise<void> {
+  const { rows } = await db.query<{ conname: string }>(
+    `select conname from pg_constraint
+     where conrelid = 'public.country_profiles'::regclass and contype = 'c'`,
+  );
+  const names = rows.map((r) => r.conname);
+
+  for (const expected of [
+    "country_profiles_claims_need_provenance",
+    "country_profiles_verified_needs_provenance",
+    "country_profiles_source_url_is_http",
+    "country_profiles_verified_at_not_future",
+  ]) {
+    expect(names, `${expected} should exist`).toContain(expected);
+  }
+}

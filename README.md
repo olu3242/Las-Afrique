@@ -17,7 +17,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 0 | Landing page and waitlist | PASS |
 | 1 | Platform foundation — route separation, Supabase, schema, RLS | PASS |
 | 2 | Auth and trip onboarding | PASS |
-| 3 | Country intelligence | Not started |
+| 3 | Country intelligence | Built — awaiting hosted certification |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
 
