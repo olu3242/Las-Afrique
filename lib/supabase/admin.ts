@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { readServiceRoleKey, requirePublicSupabaseEnv } from "@/lib/env";
+import { readSecretKey, requirePublicSupabaseEnv } from "@/lib/env";
 import type { Database } from "./types";
 
 /**
@@ -16,16 +16,17 @@ import type { Database } from "./types";
  */
 export function createAdminClient() {
   const { url } = requirePublicSupabaseEnv();
-  const serviceRoleKey = readServiceRoleKey();
+  const secretKey = readSecretKey();
 
-  if (!serviceRoleKey) {
+  if (!secretKey) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is not set. It is required for privileged " +
-        "server operations and must never be exposed to the browser.",
+      "No Supabase secret key is set. Set SUPABASE_SECRET_KEY (or the legacy " +
+        "SUPABASE_SERVICE_ROLE_KEY). It is required for privileged server " +
+        "operations and must never be exposed to the browser.",
     );
   }
 
-  return createSupabaseClient<Database>(url, serviceRoleKey, {
+  return createSupabaseClient<Database>(url, secretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

@@ -35,12 +35,28 @@ describe("server secrets stay on the server", () => {
     expect(clientFiles.length).toBeGreaterThan(0);
   });
 
-  it("never names the service-role key outside the admin module", () => {
+  it("never names a server secret key outside the admin module", () => {
+    // Both key generations: the current secret key and the legacy service-role
+    // key. Either one bypasses row-level security.
+    const SECRET_NAMES = ["SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+
     const offenders = sourceFiles.filter((path) => {
       if (path.endsWith(join("lib", "env.ts"))) return false;
       if (path.endsWith(join("lib", "supabase", "admin.ts"))) return false;
-      return readFileSync(path, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY");
+      const source = readFileSync(path, "utf8");
+      return SECRET_NAMES.some((name) => source.includes(name));
     });
+    expect(offenders).toEqual([]);
+  });
+
+  it("never prefixes a secret key name with NEXT_PUBLIC_", () => {
+    // That prefix inlines the value into the client bundle. A secret carrying it
+    // is published to every visitor.
+    const offenders = sourceFiles.filter((path) =>
+      /NEXT_PUBLIC_SUPABASE_(SECRET|SERVICE_ROLE)_KEY/.test(
+        readFileSync(path, "utf8"),
+      ),
+    );
     expect(offenders).toEqual([]);
   });
 
@@ -69,9 +85,14 @@ describe("server secrets stay on the server", () => {
     const chunks = walk(staticDir, (p) => p.endsWith(".js"));
     expect(chunks.length).toBeGreaterThan(0);
 
-    const leaked = chunks.filter((path) =>
-      readFileSync(path, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY"),
-    );
+    const leaked = chunks.filter((path) => {
+      const source = readFileSync(path, "utf8");
+      return (
+        source.includes("SUPABASE_SECRET_KEY") ||
+        source.includes("SUPABASE_SERVICE_ROLE_KEY") ||
+        source.includes("sb_secret_")
+      );
+    });
     expect(leaked).toEqual([]);
   });
 });
