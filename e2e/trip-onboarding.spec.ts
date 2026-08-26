@@ -334,7 +334,13 @@ test.describe("trip onboarding, signed in", () => {
     );
 
     // --- the document vault -------------------------------------------------
-    // Iteration 8. Still on the trip page.
+    // Iteration 8. Back to the trip first: the previous block followed the
+    // guide link to /countries/nigeria, so this was asserting a trip-page
+    // section against the country page. The comment used to claim we were
+    // "still on the trip page", which is exactly the kind of premise a test
+    // should not assert on trust.
+    await page.goto(tripUrl);
+
     const documents = page.locator("section", {
       has: page.getByRole("heading", { name: /^Documents$/ }),
     });
