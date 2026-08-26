@@ -136,8 +136,14 @@ Required repository secrets:
 | `SUPABASE_PROJECT_REF` | no | Derived from the project URL unless set explicitly |
 
 The API probes sign up real users, so the test project needs **email
-confirmation disabled** — otherwise signup returns no session and the suite
-fails with that explanation rather than passing hollowly.
+confirmation disabled** (Authentication → Sign In / Providers → Confirm email).
+With it on, every signup sends mail and returns no session, and a run ends in
+the project's email rate limit. The probe reports that as the configuration
+problem it is rather than passing hollowly.
+
+`HOSTED_PROBE_EMAIL_DOMAIN` is optional: Supabase rejects `example.com` and the
+reserved `.invalid` / `.test` TLDs, so set it if the project refuses the default
+probe domain.
 
 Run them yourself against a project you are pointed at:
 

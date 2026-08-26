@@ -123,7 +123,7 @@ An iteration may be declared complete only when
 | # | Engine | Result | Gap |
 | --- | --- | --- | --- |
 | 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
-| 1 | Platform | **ENGINE_PARTIAL** | DB, RLS and the protected-route gate are proven end to end. The `app → lib/supabase/server.ts → Supabase → row` path and session refresh are **unproven** until the hosted workflow has run |
+| 1 | Platform | **ENGINE_PARTIAL** | Hosted DB converged and proven: migrations applied to the project, and hosted schema (6/6) + hosted RLS two-user isolation (6/6) + anonymous API (3/3) all pass against it. Still unproven: the `app → lib/supabase/server.ts → Supabase → row` path and session refresh, which need Iteration 2's auth UI |
 | 2 | Trip onboarding | **BLOCKED** | No auth UI exists yet, and the hosted project has no schema until `hosted-db.yml` runs |
 | 3–10 | — | Not started | Each blocked on its predecessor |
 
@@ -135,10 +135,16 @@ honestly. It does not exercise the application's own client, PostgREST, or
 GoTrue, so "server access" and "refresh/session" in the Iteration 1 path remain
 unproven.
 
-`.github/workflows/hosted-db.yml` is the path to closing it: it applies the
-migrations to the real project and proves the resulting state, including
-two-user isolation through PostgREST. It needs repository secrets, and it has
-not yet been run.
+`.github/workflows/hosted-db.yml` has now run against the real project. It
+applied the migrations and proved the resulting state — schema, forced RLS,
+policy coverage, grants, and two-user isolation executed through the project's
+own `auth.uid()`.
+
+What it has not yet proven is the signed-in half of the HTTP path. Those probes
+sign up real users, and the project still has email confirmation enabled, so
+signup sends mail and returns no session — every attempt ends in the project's
+email rate limit rather than a usable token. That is a project setting, not a
+code defect, and the probe says so explicitly rather than passing.
 
 ### The local/hosted distinction
 
