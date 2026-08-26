@@ -14,12 +14,16 @@ built behind it in numbered iterations, one branch and PR each:
 
 | Iteration | Scope | State |
 | --- | --- | --- |
-| 0 | Landing page and waitlist | Complete |
-| 1 | Platform foundation — route separation, Supabase, schema, RLS | Current |
-| 2 | Auth and trip onboarding | Not started |
+| 0 | Landing page and waitlist | PASS |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | ENGINE_PARTIAL |
+| 2 | Auth and trip onboarding | BLOCKED — needs a real Supabase project |
 | 3 | Country intelligence | Not started |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
+
+An iteration counts as done only when its whole path works end to end and
+consumes the real engine before it — see
+[`docs/ITERATION-STANDARD.md`](docs/ITERATION-STANDARD.md).
 
 There is still no working authentication, no AI and no payment processing. The
 `/dashboard` route exists and is gated, but has nothing behind it yet.
@@ -78,6 +82,31 @@ npm run db:stop
 Already have a Postgres you manage? Point `TEST_DATABASE_URL` at it and skip
 `db:start`.
 
+Browser end-to-end runs against a production build, because middleware,
+prerendering and bundle contents all differ from the dev server:
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+On a machine with a pre-installed browser, point Playwright at it with
+`PLAYWRIGHT_CHROMIUM_PATH` instead of downloading one.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request:
+
+| Job | Does |
+| --- | --- |
+| Lint and types | ESLint, `tsc --noEmit` |
+| Tests | Build unconfigured, then schema / RLS / bundle-safety against a real PostgreSQL service container |
+| Browser E2E | Build, then Playwright against the production server |
+
+The build step deliberately runs with **no** Supabase configuration: the
+marketing site must build on a fresh checkout, and protected routes must fail
+closed rather than fall open when unconfigured.
+
 ### Scripts
 
 | Command | Does |
@@ -88,6 +117,8 @@ Already have a Postgres you manage? Point `TEST_DATABASE_URL` at it and skip
 | `npm run lint` | ESLint via `next lint` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest — schema, RLS and bundle-safety suites |
+| `npm run test:e2e` | Playwright — browser end-to-end against a production build |
+| `npm run test:all` | Both suites |
 | `npm run db:start` / `db:stop` | Local Postgres for the database tests |
 
 ## Stack

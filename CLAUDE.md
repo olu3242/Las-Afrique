@@ -3,7 +3,8 @@
 Persistent context for anyone (human or agent) working in this repository.
 
 **Source-of-truth hierarchy.** `docs/PRD.md` defines product scope and
-requirements. This file defines engineering and design conventions. `README.md`
+requirements. `docs/ITERATION-STANDARD.md` defines when an iteration may be
+called done. This file defines engineering and design conventions. `README.md`
 describes setup and current status. Code implements. When documentation and code
 disagree, the PRD wins — fix the code, or fix the doc if the PRD justifies it.
 
@@ -14,16 +15,26 @@ and stays live; Phase 1 is being built behind it in numbered iterations.
 
 | Iteration | Scope | State |
 | --- | --- | --- |
-| 0 | Landing page and waitlist | Complete |
-| 1 | Platform foundation — route separation, Supabase, schema, RLS | Current |
-| 2 | Auth and trip onboarding | Not started |
+| 0 | Landing page and waitlist | PASS |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | **ENGINE_PARTIAL** |
+| 2 | Auth and trip onboarding | BLOCKED — needs a real Supabase project |
 | 3 | Country intelligence | Not started |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
 
-Each iteration ships on its own branch and PR. Do not start an iteration whose
-predecessor has not been certified. Phase 2 scope (group coordination,
-referrals, native apps, post-arrival concierge) stays out entirely.
+Each iteration ships on its own branch and PR. Phase 2 scope (group
+coordination, referrals, native apps, post-arrival concierge) stays out
+entirely.
+
+**An iteration is an engine, not a feature slice.** Compiling code, passing
+isolated tests and existing UI do not make an iteration complete — the full path
+from input through validation, domain logic, persistence, authorization and back
+to a consumer has to work, and it has to consume the real preceding engine
+rather than a duplicate of its logic. Read `docs/ITERATION-STANDARD.md` before
+starting or certifying one.
+
+Never report an iteration certified when a mock stands in for a dependency that
+actually exists. Report `ENGINE_PARTIAL` or `BLOCKED` and name the gap.
 
 ## Stack
 
@@ -202,7 +213,13 @@ npm run lint
 npm run typecheck
 npm run db:start && npm test
 npm run build
+npm run test:e2e
 ```
+
+CI runs all of these on every pull request (`.github/workflows/ci.yml`), with
+the database suite against a real PostgreSQL service container and the
+end-to-end suite against a production build. Run them locally first — a push
+that turns CI red costs a cycle.
 
 For visual changes, check 375 / 768 / 1024 / 1440 px for horizontal overflow,
 stacking and touch targets. Mobile is a first-class experience, not a fallback.
