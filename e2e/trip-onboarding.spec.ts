@@ -149,14 +149,24 @@ test.describe("trip onboarding, signed in", () => {
     await page.getByLabel("Last four of passport").fill("8f2c");
     await page.getByRole("button", { name: /add traveller/i }).click();
 
-    await expect(page.getByText("Ama Mensah")).toBeVisible();
-    await expect(page.getByText(/····8F2C/)).toBeVisible();
+    // Scoped to the list entry, not searched for across the page. A bare
+    // getByText("Ama Mensah") matches twice — once in the entry and once in the
+    // remove button's sr-only label, which exists so that button is announced
+    // as "Remove Ama Mensah" rather than a row of identical "Remove"s. The
+    // duplicate is correct markup; the locator was what needed to be precise.
+    const traveller = page
+      .getByRole("listitem")
+      .filter({ hasText: "Ama Mensah" });
+
+    await expect(traveller).toHaveCount(1);
+    await expect(traveller.getByText(/····8F2C/)).toBeVisible();
 
     // --- refresh / replay ---------------------------------------------------
     // The one that separates "the page updated" from "the row was written".
     await page.reload();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Lagos");
-    await expect(page.getByText("Ama Mensah")).toBeVisible();
+    await expect(traveller).toHaveCount(1);
+    await expect(traveller.getByText(/····8F2C/)).toBeVisible();
 
     // And the trip now shows on the dashboard with its traveller counted.
     await page.goto("/dashboard");
@@ -166,7 +176,7 @@ test.describe("trip onboarding, signed in", () => {
     // --- traveller removal, and its refresh ---------------------------------
     await page.goto(tripUrl);
     await page.getByRole("button", { name: /remove ama mensah/i }).click();
-    await expect(page.getByText("Ama Mensah")).toHaveCount(0);
+    await expect(traveller).toHaveCount(0);
     await page.reload();
     await expect(page.getByText(/no travellers added yet/i)).toBeVisible();
   });
