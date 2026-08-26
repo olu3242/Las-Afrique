@@ -16,6 +16,8 @@ import { BudgetPanel } from "@/components/ui/budget-panel";
 import { buildPlannerTools } from "@/lib/planner/tools";
 import { planTrip } from "@/lib/planner/service";
 import { PlannerPanel } from "@/components/ui/planner-panel";
+import { listVaultFiles } from "@/lib/vault/service";
+import { VaultPanel } from "@/components/ui/vault-panel";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -85,6 +87,10 @@ export default async function TripDetailPage({
   // plan that strays outside it is discarded rather than shown.
   const plannerTools = await buildPlannerTools(trip, travelers);
   const plan = await planTrip(plannerTools);
+
+  // Metadata under RLS, bytes under a storage policy keyed on the object's
+  // own path. Links are signed per request and expire shortly after.
+  const documents = await listVaultFiles(trip.id);
 
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
@@ -157,6 +163,15 @@ export default async function TripDetailPage({
         </h2>
         <div className="mt-5">
           <BudgetPanel budget={budget} />
+        </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="documents">
+        <h2 id="documents" className="font-display text-xl text-ivory">
+          Documents
+        </h2>
+        <div className="mt-5">
+          <VaultPanel files={documents} tripId={trip.id} />
         </div>
       </section>
 

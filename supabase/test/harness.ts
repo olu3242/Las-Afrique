@@ -3,7 +3,18 @@ import { join } from "node:path";
 import { Client } from "pg";
 
 const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
-const SHIM = join(process.cwd(), "supabase", "test", "00_auth_shim.sql");
+const SHIM_DIR = join(process.cwd(), "supabase", "test");
+
+/**
+ * Shim files in lexical order. Plural since Iteration 8: storage needs the
+ * same treatment auth did, and a second file is clearer than one that grows
+ * to cover every Supabase-provisioned schema.
+ */
+function shimFiles(): string[] {
+  return readdirSync(SHIM_DIR)
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+}
 
 // `||` rather than `??`: an unset CI variable arrives as an empty string, and
 // `??` would keep it and connect nowhere.
@@ -46,7 +57,9 @@ export async function createMigratedDatabase(
   const db = new Client({ connectionString: url.toString() });
   await db.connect();
 
-  await db.query(readFileSync(SHIM, "utf8"));
+  for (const file of shimFiles()) {
+    await db.query(readFileSync(join(SHIM_DIR, file), "utf8"));
+  }
   if (beforeMigrations) await db.query(beforeMigrations);
   for (const file of migrationFiles()) {
     await db.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));

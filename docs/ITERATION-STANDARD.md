@@ -130,7 +130,8 @@ An iteration may be declared complete only when
 | 5 | Budget | **Pending hosted certification** | Deterministic engine over stated rates. Rates carry a basis — illustrative or verified — under the same provenance rule as country claims, and every figure derived from a placeholder says so on screen |
 | 6 | AI planner | **ENGINE_PARTIAL** | Tool snapshot, contract, verifier, refusal path and UI are real and tested. The model call is not: no provider is configured for this project — no SDK, no key — so `planTrip` reports unavailable rather than returning a stub plan |
 | 7 | Dashboard | **Pending hosted certification** | Composes every preceding engine and computes none of them. The route motif becomes the trip timeline, derived rather than stored |
-| 8–10 | — | Not started | Each blocked on its predecessor |
+| 8 | Vault | **Pending hosted certification** | Private bucket, ownership enforced by object path, signed short-lived downloads, and reconciliation that reports drift rather than pretending two stores commit atomically |
+| 9–10 | — | Not started | Each blocked on its predecessor |
 
 ### Iteration 2 — what was observed
 

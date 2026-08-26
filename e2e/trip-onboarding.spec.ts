@@ -306,6 +306,22 @@ test.describe("trip onboarding, signed in", () => {
       "Nigeria",
     );
 
+    // --- the document vault -------------------------------------------------
+    // Iteration 8. Still on the trip page.
+    const documents = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Documents$/ }),
+    });
+    await expect(documents).toBeVisible();
+    await expect(documents).toContainText(/no documents yet/i);
+    // The privacy property stated where the traveller can see it.
+    await expect(documents).toContainText(/reachable only by you/i);
+    await expect(documents).toContainText(/links expire/i);
+    // The picker offers document types, not anything at all.
+    await expect(documents.locator('input[type="file"]')).toHaveAttribute(
+      "accept",
+      /application\/pdf/,
+    );
+
     // --- traveller removal, and its refresh ---------------------------------
     await page.goto(tripUrl);
     await page.getByRole("button", { name: /remove ama mensah/i }).click();
