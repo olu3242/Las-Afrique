@@ -33,21 +33,39 @@ test.describe("trip onboarding, signed in", () => {
     }. This proves nothing until it runs against a real project.`,
   );
 
-  let user: ProbeUser;
+  /**
+   * A fresh user per test, not one shared across the file.
+   *
+   * Shared would be a latent failure: the first test asserts absolute counts
+   * ("1 trip", "1 traveller") and the second creates another trip for the same
+   * account. Serial declaration order hides it until a retry reorders the
+   * effective sequence — and `retries: 1` is on in CI — at which point the
+   * first test sees two trips and fails for a reason that has nothing to do
+   * with the code under test.
+   *
+   * Each test owning its users also means they can run in parallel, which is
+   * how the config is set.
+   */
+  const created: ProbeUser[] = [];
 
-  test.beforeAll(async () => {
-    if (!configured) return;
-    user = await createProbeUser(config as AdminConfig);
-  });
+  async function newUser(): Promise<ProbeUser> {
+    const probe = await createProbeUser(config as AdminConfig);
+    created.push(probe);
+    return probe;
+  }
 
   test.afterAll(async () => {
-    if (!configured || !user) return;
-    await deleteProbeUser(config as AdminConfig, user.id);
+    if (!configured) return;
+    // Cascades take the trips and travellers with them.
+    for (const probe of created) {
+      await deleteProbeUser(config as AdminConfig, probe.id);
+    }
   });
 
   test("carries a new user from sign-in to a saved trip and back", async ({
     page,
   }) => {
+    const user = await newUser();
     // --- sign in, through the form ------------------------------------------
     await page.goto("/login");
     await page.getByLabel("Email address").fill(user.email);
@@ -98,9 +116,19 @@ test.describe("trip onboarding, signed in", () => {
     const tripUrl = page.url();
 
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Lagos");
-    await expect(page.getByText("Nigeria")).toBeVisible();
-    // The figures came back out of the database, not out of the form state.
-    await expect(page.getByText("2", { exact: true })).toBeVisible();
+
+    // Read each figure from the <dd> that belongs to its own <dt>, rather than
+    // by searching the page for the text. A bare getByText("2") would match
+    // any stray "2" on the page and pass for the wrong reason.
+    const fact = (term: string) =>
+      page
+        .locator("dt", { hasText: new RegExp(`^${term}$`) })
+        .locator("xpath=following-sibling::dd[1]");
+
+    await expect(fact("Destination")).toHaveText("Lagos, Nigeria");
+    // Came back out of the database, not out of the form state.
+    await expect(fact("Party size")).toHaveText("2");
+    await expect(fact("Departure")).not.toHaveText("Not set");
 
     // --- travellers ---------------------------------------------------------
     await expect(page.getByText(/no travellers added yet/i)).toBeVisible();
@@ -138,6 +166,8 @@ test.describe("trip onboarding, signed in", () => {
   }) => {
     // The adversarial half. Alice creates a trip; Bob, signed in for real,
     // gets a 404 for its URL rather than its contents.
+    const user = await newUser();
+
     await page.goto("/login");
     await page.getByLabel("Email address").fill(user.email);
     await page.getByLabel("Password").fill(user.password);
@@ -153,7 +183,7 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page).toHaveURL(/\/trips\/[0-9a-f-]{36}$/);
     const aliceTripUrl = page.url();
 
-    const bob = await createProbeUser(config as AdminConfig);
+    const bob = await newUser();
     const bobContext = await browser.newContext();
     try {
       const bobPage = await bobContext.newPage();
@@ -175,7 +205,6 @@ test.describe("trip onboarding, signed in", () => {
       ).toBeVisible();
     } finally {
       await bobContext.close();
-      await deleteProbeUser(config as AdminConfig, bob.id);
     }
   });
 });
