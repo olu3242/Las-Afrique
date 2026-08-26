@@ -184,6 +184,15 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // Back to the trip page. The dashboard check above navigated away, and
+    // everything below asserts on sections that only exist here.
+    //
+    // Worth stating plainly: this spec is skipped everywhere except the hosted
+    // run, so an ordering mistake in it is invisible locally and costs a
+    // hosted cycle to find. Each block below now says which page it is on
+    // rather than inheriting whatever the previous block left behind.
+    await page.goto(tripUrl);
+
     // --- budget, consumed by the trip ---------------------------------------
     // Iteration 5. The trip was created with 2 travellers and real dates, so
     // the engine has enough to compute from.
@@ -226,8 +235,8 @@ test.describe("trip onboarding, signed in", () => {
 
     // --- country intelligence, consumed by the trip -------------------------
     // Iteration 3's path ends here: the trip reads the real Country Data
-    // Service rather than restating anything about Nigeria itself.
-    await page.goto(tripUrl);
+    // Service rather than restating anything about Nigeria itself. Still on
+    // the trip page from the navigation above.
     const guideSection = page.locator("section", {
       has: page.getByRole("heading", { name: /nigeria guide/i }),
     });
