@@ -23,7 +23,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 6 | AI planner | ENGINE_PARTIAL — no provider configured |
 | 7 | Dashboard | PASS |
 | 8 | Document vault | ENGINE_PARTIAL — storage path unexercised |
-| 9 | Reminders | ENGINE_PARTIAL — scheduling not wired |
+| 9 | Reminders | PASS |
 | 10 | Golden path | PASS |
 
 An iteration counts as done only when its whole path works end to end and
