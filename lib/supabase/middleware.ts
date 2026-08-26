@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getPublicSupabaseEnv } from "@/lib/env";
 
 /** Route prefixes that require a signed-in user. */
-export const PROTECTED_PREFIXES = ["/dashboard"] as const;
+export const PROTECTED_PREFIXES = ["/dashboard", "/trips"] as const;
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -63,13 +63,20 @@ export async function updateSession(request: NextRequest) {
 }
 
 /**
- * Iteration 1 has no sign-in page yet, so unauthenticated traffic goes to the
- * marketing home with a flag the page can act on. Iteration 2 repoints this at
- * /login once that route exists.
+ * Send unauthenticated traffic to the sign-in page, carrying where it was
+ * headed so signing in resumes the journey instead of dropping the user on a
+ * dashboard they did not ask for.
+ *
+ * `next` is a path and search only — never the full URL. `safeDestination` in
+ * lib/auth/actions.ts refuses anything that is not same-origin when it reads
+ * this back, so a crafted link cannot turn sign-in into an open redirect.
  */
 function redirectToSignIn(request: NextRequest) {
   const url = request.nextUrl.clone();
-  url.pathname = "/";
-  url.searchParams.set("auth", "required");
+  const intended = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  url.pathname = "/login";
+  url.search = "";
+  url.searchParams.set("next", intended);
+  url.searchParams.set("reason", "required");
   return NextResponse.redirect(url);
 }

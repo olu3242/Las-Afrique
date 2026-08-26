@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { RouteMotif } from "@/components/ui/route-motif";
 
 const NAV_LINKS = [
@@ -35,12 +36,24 @@ export function SiteHeader() {
           </ul>
         </nav>
 
-        <a
-          href="#waitlist"
-          className="rounded-full bg-sunset px-5 py-2.5 text-sm font-medium text-indigo-950 transition-colors hover:bg-sunset/90"
-        >
-          Join the waitlist
-        </a>
+        <div className="flex items-center gap-4">
+          {/*
+            A real route now, not an anchor. Accounts exist as of Iteration 2,
+            so the marketing site has somewhere to hand a returning traveller.
+          */}
+          <Link
+            href="/login"
+            className="inline-block py-2 text-sm text-ivory/70 transition-colors hover:text-ivory"
+          >
+            Sign in
+          </Link>
+          <a
+            href="#waitlist"
+            className="rounded-full bg-sunset px-5 py-2.5 text-sm font-medium text-indigo-950 transition-colors hover:bg-sunset/90"
+          >
+            Join the waitlist
+          </a>
+        </div>
       </div>
     </header>
   );

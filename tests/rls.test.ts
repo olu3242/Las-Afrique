@@ -29,11 +29,6 @@ describe("row-level security", () => {
     alice = await createUser(db, "alice@example.com");
     bob = await createUser(db, "bob@example.com");
 
-    await db.query(
-      `insert into public.country_profiles (key, name, currency, sort_order)
-       values ('nigeria', 'Nigeria', 'NGN', 1)`,
-    );
-
     const { rows: aliceRows } = await db.query<{ id: string }>(
       `insert into public.trips (user_id, destination_city) values ($1, 'Lagos')
        returning id`,
@@ -169,6 +164,75 @@ describe("row-level security", () => {
       expect(rows).toHaveLength(0);
     });
 
+    it("refuses a traveller attached to another user's trip", async () => {
+      // The insert policy alone does not stop this: `user_id = auth.uid()` is
+      // satisfied by Bob owning the traveller row, and the trip really exists.
+      // What refuses it is the composite foreign key in 0006, which forces the
+      // traveller's owner to equal the trip's owner.
+      await expect(
+        asUser(db, bob, async () => {
+          await db.query(
+            `insert into public.travelers (trip_id, user_id, full_name)
+             values ($1, $2, 'Smuggled in')`,
+            [aliceTrip, bob],
+          );
+        }),
+      ).rejects.toThrow(/violates foreign key constraint/i);
+    });
+
+    it("refuses to move an owned traveller onto another user's trip", async () => {
+      const { rows } = await db.query<{ id: string }>(
+        `insert into public.travelers (trip_id, user_id, full_name)
+         values ($1, $2, 'Bob himself') returning id`,
+        [bobTrip, bob],
+      );
+
+      await expect(
+        asUser(db, bob, async () => {
+          await db.query(
+            `update public.travelers set trip_id = $1 where id = $2`,
+            [aliceTrip, rows[0].id],
+          );
+        }),
+      ).rejects.toThrow(/violates foreign key constraint/i);
+    });
+
+    it("refuses cross-owner children on every table that references a trip", async () => {
+      // Same defect class as the traveller case. Asserted per table so a new
+      // trip-referencing table cannot quietly reintroduce it.
+      const inserts: Array<[string, string]> = [
+        [
+          "document_records",
+          `insert into public.document_records (trip_id, user_id, kind)
+           values ($1, $2, 'passport')`,
+        ],
+        [
+          "cost_estimates",
+          `insert into public.cost_estimates (trip_id, user_id, currency, engine_version)
+           values ($1, $2, 'USD', 'test')`,
+        ],
+        [
+          "savings_plans",
+          `insert into public.savings_plans (trip_id, user_id, currency)
+           values ($1, $2, 'USD')`,
+        ],
+        [
+          "vault_files",
+          `insert into public.vault_files (trip_id, user_id, storage_path, file_name)
+           values ($1, $2, 'probe/cross-owner.pdf', 'cross-owner.pdf')`,
+        ],
+      ];
+
+      for (const [table, sql] of inserts) {
+        await expect(
+          asUser(db, bob, async () => {
+            await db.query(sql, [aliceTrip, bob]);
+          }),
+          `${table} must refuse a row on another user's trip`,
+        ).rejects.toThrow(/violates foreign key constraint/i);
+      }
+    });
+
     it("refuses to re-assign an owned row to another user", async () => {
       await expect(
         asUser(db, bob, async () => {
@@ -239,11 +303,16 @@ describe("row-level security", () => {
     });
 
     it("can read public country reference data", async () => {
+      // Entry requirements are not a secret, and the destination list has to
+      // render on the sign-up path before a session exists.
       const rows = await asAnon(db, async () => {
-        const { rows } = await db.query(`select key from public.country_profiles`);
+        const { rows } = await db.query<{ key: string }>(
+          `select key from public.country_profiles order by sort_order`,
+        );
         return rows;
       });
-      expect(rows).toEqual([{ key: "nigeria" }]);
+      expect(rows.length).toBeGreaterThanOrEqual(11);
+      expect(rows.map((r) => r.key)).toContain("nigeria");
     });
 
     it("cannot write country reference data", async () => {

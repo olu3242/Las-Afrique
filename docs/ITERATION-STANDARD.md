@@ -123,11 +123,37 @@ An iteration may be declared complete only when
 | # | Engine | Result | Gap |
 | --- | --- | --- | --- |
 | 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
-| 1 | Platform | **ENGINE_PARTIAL** | Hosted DB certified: migrations `0001`–`0003` applied to the project, and hosted schema (6/6), RLS (6/6) and API (6/6) all pass against it — including two signed-in users isolated through PostgREST. Still unproven: the `app route → lib/supabase/server.ts → Supabase → row → rendered UI` path and cookie session refresh, which need Iteration 2's auth UI |
-| 2 | Trip onboarding | Not started | Unblocked — the hosted database is certified. The remaining work is the iteration's own: auth UI, trip form, and the server-side read path |
+| 1 | Platform | **PASS** | Hosted DB certified, and Iteration 2 now closes the half that was open: a rendered route reaches Supabase through `lib/supabase/server.ts`, and the middleware issues and refreshes the cookie session. Proven in a browser against the real project |
+| 2 | Trip onboarding | **See `E2E_ENGINE_CERTIFICATION` below** | Built: auth routes, trip intake, travellers, trip detail. Certification depends on the hosted browser run — see the block below for what has and has not been observed |
 | 3–10 | — | Not started | Each blocked on its predecessor |
 
-### Why Iteration 1 is partial
+### Iteration 2 — what has been observed
+
+Written down before the hosted run, so the gap between "built" and "certified"
+stays visible rather than being closed by assertion.
+
+| Path stage | Proven by | Where it ran |
+| --- | --- | --- |
+| UI / input | `e2e/trip-onboarding.spec.ts` | Browser, real project |
+| Validation | `tests/trip-validation.test.ts` (26) + the same rules driven through the form | Local + browser |
+| Domain logic | `lib/trips/validation.ts`, consumed by the action — not restated in the form | Local |
+| Persistence | Trip and traveller rows read back after a reload | Browser, real project |
+| Authorization | RLS suites (local + hosted) and Bob's 404 on Alice's trip URL | All three |
+| Output / consumer | Trip detail and dashboard rendering database rows | Browser, real project |
+| Refresh / replay | `page.reload()` after each mutation; cookie session refreshed by middleware | Browser, real project |
+
+Two things are deliberately *not* claimed:
+
+- **Sign-up through the browser** is not in the journey spec. The project has
+  email confirmation on, so signup returns no session and the action says so
+  rather than pretending. The spec creates its users through the Auth admin
+  API and proves sign-in onward. Sign-up's own logic is covered by the action
+  and by the profile trigger tests, not by a browser run.
+- **A skipped journey is not a pass.** The spec skips itself where no project
+  is configured, and the hosted workflow fails the run if it skipped. Without
+  that step a green job would mean nothing.
+
+### Why Iteration 1 was partial, and what closed it
 
 Its tests reach Postgres directly through `pg`, executing the real policies with
 Supabase's own `auth.uid()`. That proves the database half of the chain
@@ -146,11 +172,12 @@ sessions, and drive PostgREST with those tokens: one user's trip is visible to
 its owner, absent for the other, and an insert forging the other's `user_id` is
 refused. GoTrue, PostgREST and the policies are all in that path.
 
-What remains unproven is the application's own half. Nothing yet reaches
-Supabase through `lib/supabase/server.ts` from a rendered route, and no cookie
-session is issued or refreshed by the app's middleware — the probes use bearer
-tokens directly. Those are Iteration 2's to build and to certify, and until a
-route exercises them the Iteration 1 path is partial.
+That application half is no longer missing. Iteration 2's routes reach Supabase
+through `lib/supabase/server.ts` from rendered pages, and the middleware issues
+and refreshes the cookie session that carries them — exercised in a browser
+against the real project rather than with bearer tokens. That is what moved
+Iteration 1 from `ENGINE_PARTIAL` to `PASS`, and it is why the heading above is
+kept: the reasoning that made it partial is worth not losing.
 
 ### The local/hosted distinction
 

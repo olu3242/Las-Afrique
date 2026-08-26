@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Client } from "pg";
 import {
@@ -28,7 +30,130 @@ describe("migrations", () => {
       "0001_initial_schema.sql",
       "0002_row_level_security.sql",
       "0003_revoke_anon_tenant_grants.sql",
+      "0004_provision_profile_on_signup.sql",
+      "0005_seed_country_identity.sql",
+      "0006_tenant_consistent_foreign_keys.sql",
     ]);
+  });
+
+  it("seeds the launch countries with identity and no requirement claims", async () => {
+    const { rows } = await db.query<{
+      key: string;
+      name: string;
+      currency: string;
+      verification_state: string;
+      visa_entry_info: unknown;
+      passport_considerations: unknown;
+      source_url: string | null;
+      last_verified_at: string | null;
+    }>(
+      `select key, name, currency, verification_state, visa_entry_info,
+              passport_considerations, source_url, last_verified_at
+       from public.country_profiles order by sort_order`,
+    );
+
+    expect(rows.length).toBeGreaterThanOrEqual(11);
+    expect(rows[0].key).toBe("nigeria");
+    expect(rows.every((r) => /^[A-Z]{3}$/.test(r.currency))).toBe(true);
+
+    // The load-bearing half. Seeding a country's *identity* is fact; seeding
+    // what it requires of a traveller would be fabrication, and this asserts
+    // the migration did not quietly do that to make a card look finished.
+    for (const row of rows) {
+      expect(row.verification_state, row.key).toBe("unverified");
+      expect(row.visa_entry_info, row.key).toBeNull();
+      expect(row.passport_considerations, row.key).toBeNull();
+      expect(row.source_url, row.key).toBeNull();
+      expect(row.last_verified_at, row.key).toBeNull();
+    }
+  });
+
+  it("re-runs the country seed without duplicating or clobbering verified data", async () => {
+    // Migrations are append-only, but the seed is also the shape Iteration 3
+    // will re-run. Applying it twice must not double the rows, and must not
+    // overwrite requirement columns a later verified load has filled in.
+    await db.query(
+      `update public.country_profiles
+       set visa_entry_info = '{"summary": "verified later"}'::jsonb,
+           verification_state = 'verified'
+       where key = 'ghana'`,
+    );
+
+    const seed = readFileSync(
+      join(process.cwd(), "supabase", "migrations", "0005_seed_country_identity.sql"),
+      "utf8",
+    );
+    await db.query(seed);
+
+    const { rows } = await db.query<{ count: string }>(
+      `select count(*) as count from public.country_profiles where key = 'ghana'`,
+    );
+    expect(rows[0].count).toBe("1");
+
+    const ghana = await db.query<{
+      visa_entry_info: { summary: string } | null;
+      verification_state: string;
+    }>(
+      `select visa_entry_info, verification_state
+       from public.country_profiles where key = 'ghana'`,
+    );
+    expect(ghana.rows[0].visa_entry_info?.summary).toBe("verified later");
+    expect(ghana.rows[0].verification_state).toBe("verified");
+  });
+
+  it("provisions a profile when an auth user is created", async () => {
+    const { rows } = await db.query<{ id: string; display_name: string | null }>(
+      `insert into auth.users (email, raw_user_meta_data)
+       values ('provisioned@example.test', '{"display_name": "Ama"}'::jsonb)
+       returning id`,
+    );
+    const profile = await db.query(
+      `select display_name from public.profiles where id = $1`,
+      [rows[0].id],
+    );
+    expect(profile.rowCount).toBe(1);
+    expect(profile.rows[0].display_name).toBe("Ama");
+  });
+
+  it("provisions a profile even with no display name supplied", async () => {
+    // The admin API and OAuth callbacks both create users with no metadata.
+    // A profile that only appears when the sign-up form was used is not a
+    // profile step, so this asserts the null case explicitly.
+    const { rows } = await db.query<{ id: string }>(
+      `insert into auth.users (email) values ('bare@example.test') returning id`,
+    );
+    const profile = await db.query(
+      `select display_name from public.profiles where id = $1`,
+      [rows[0].id],
+    );
+    expect(profile.rowCount).toBe(1);
+    expect(profile.rows[0].display_name).toBeNull();
+  });
+
+  it("treats a blank display name as absent rather than storing it", async () => {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into auth.users (email, raw_user_meta_data)
+       values ('blank@example.test', '{"display_name": "   "}'::jsonb)
+       returning id`,
+    );
+    const profile = await db.query(
+      `select display_name from public.profiles where id = $1`,
+      [rows[0].id],
+    );
+    expect(profile.rows[0].display_name).toBeNull();
+  });
+
+  it("removes the profile when the auth user is deleted", async () => {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into auth.users (email) values ('transient@example.test')
+       returning id`,
+    );
+    await db.query(`delete from auth.users where id = $1`, [rows[0].id]);
+    const profile = await db.query(
+      `select 1 from public.profiles where id = $1`,
+      [rows[0].id],
+    );
+    expect(profile.rowCount).toBe(0);
   });
 
   it("creates every table the type definitions declare", async () => {

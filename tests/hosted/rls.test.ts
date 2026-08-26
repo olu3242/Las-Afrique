@@ -111,6 +111,24 @@ describe("hosted row-level security", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
+  it("refuses a traveller attached to another user's trip", async () => {
+    // Not RLS — the composite foreign key from 0006. Bob owns the traveller
+    // row, so the insert policy is satisfied and the trip really exists; what
+    // refuses it is that travelers references trips (id, user_id).
+    //
+    // Asserted on the hosted project specifically, because this is a schema
+    // change and a schema change is only real once it has been pushed.
+    await expect(
+      asUser(bob, async () => {
+        await db.query(
+          `insert into public.travelers (trip_id, user_id, full_name)
+           values ($1, $2, 'Smuggled in')`,
+          [aliceTrip, bob],
+        );
+      }),
+    ).rejects.toThrow(/foreign key constraint/i);
+  });
+
   it("refuses to re-assign an owned row to another user", async () => {
     await expect(
       asUser(bob, async () => {

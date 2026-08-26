@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RouteMotif } from "@/components/ui/route-motif";
+import { signOut } from "@/lib/auth/actions";
 
 /**
  * Shell for authenticated product routes.
@@ -24,13 +25,26 @@ export default function AppLayout({
               Take Me Home
             </span>
           </Link>
-          <nav aria-label="Account">
+          <nav aria-label="Account" className="flex items-center gap-4">
             <Link
-              href="/"
+              href="/dashboard"
               className="inline-block py-2 text-sm text-ivory/70 transition-colors hover:text-ivory"
             >
-              Back to site
+              Trips
             </Link>
+            {/*
+              A POST, not a link. Signing out changes server state, and a GET
+              that mutates is one prefetch away from signing the user out
+              without them asking.
+            */}
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="inline-block py-2 text-sm text-ivory/70 transition-colors hover:text-ivory"
+              >
+                Sign out
+              </button>
+            </form>
           </nav>
         </div>
       </header>
