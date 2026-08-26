@@ -87,10 +87,17 @@ jobs:
             echo "Using the supplied SUPABASE_PROJECT_REF."
           fi
 
+          # Required, not optional. The project's direct host is IPv6-only and
+          # GitHub runners have no IPv6 route — run 3 failed with
+          # `connect ENETUNREACH 2600:1f10:…:5432` after migrations had already
+          # applied. The pooled string is reachable over IPv4.
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::warning::SUPABASE_DB_URL not set — falling back to a connection"
-            echo "string assembled from the project ref. If the probes cannot connect,"
-            echo "copy the exact string from the project's Connect dialog into that secret."
+            echo "::error::SUPABASE_DB_URL is not set."
+            echo "The migration push can reach the project through the CLI, but the"
+            echo "hosted probes connect directly, and db.<ref>.supabase.co is IPv6-only."
+            echo "Copy the Session pooler string from the project's Connect dialog and"
+            echo "store it as the SUPABASE_DB_URL secret."
+            exit 1
           fi
           echo "Preflight OK."
 

@@ -20,9 +20,11 @@ interface Session {
 }
 
 async function signUp(): Promise<Session | { blocked: string }> {
+  // Not a .invalid / .test address: Supabase's signup validator rejects those
+  // outright with email_address_invalid, which the first hosted run proved.
   const email = `api-probe-${Date.now()}-${Math.random()
     .toString(36)
-    .slice(2, 8)}@example.invalid`;
+    .slice(2, 8)}@example.com`;
   const password = `Pw-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
   const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
@@ -70,11 +72,38 @@ describe("hosted API", () => {
     expect(response.status).toBe(200);
   });
 
-  it("denies anonymous access to tenant tables", async () => {
-    const response = await fetch(`${supabaseUrl}/rest/v1/trips?select=id`, {
-      headers: { apikey: publishableKey },
+  it("exposes no tenant rows to anonymous callers", async () => {
+    // Asserts the security property, not the mechanism. Denial may land at the
+    // grant layer (permission denied) or at RLS (200 with no rows) — both are
+    // secure, and which one applies depends on whether the project's default
+    // privileges have granted anon. Migration 0003 revokes those, so this should
+    // now be a hard denial; the empty-array branch stays accepted so the test
+    // cannot pass while rows leak.
+    for (const table of ["trips", "travelers", "profiles", "vault_files"]) {
+      const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=*`, {
+        headers: { apikey: publishableKey },
+      });
+
+      if (response.status < 400) {
+        const body = await response.json();
+        expect(body, `${table} must expose no rows to anon`).toEqual([]);
+      } else {
+        expect(response.status).toBeGreaterThanOrEqual(400);
+      }
+    }
+  });
+
+  it("refuses anonymous writes to reference data", async () => {
+    const response = await fetch(`${supabaseUrl}/rest/v1/country_profiles`, {
+      method: "POST",
+      headers: { apikey: publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "atlantis",
+        name: "Atlantis",
+        currency: "XXX",
+        sort_order: 999,
+      }),
     });
-    // No grant for anon, so PostgREST reports permission denied rather than [].
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
 

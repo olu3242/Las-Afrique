@@ -23,7 +23,15 @@ export function migrationFiles(): string[] {
  * Each suite gets its own database so migration order is exercised from scratch
  * rather than against leftover state.
  */
-export async function createMigratedDatabase(name: string): Promise<Client> {
+export async function createMigratedDatabase(
+  name: string,
+  /**
+   * Optional SQL run after the auth shim and before the migrations. Used to
+   * reproduce settings a hosted project carries but a bare cluster does not —
+   * notably the default privileges that grant `anon` on new public tables.
+   */
+  beforeMigrations?: string,
+): Promise<Client> {
   const admin = new Client({ connectionString: TEST_DATABASE_URL });
   await admin.connect();
   await admin.query(`drop database if exists "${name}"`);
@@ -37,6 +45,7 @@ export async function createMigratedDatabase(name: string): Promise<Client> {
   await db.connect();
 
   await db.query(readFileSync(SHIM, "utf8"));
+  if (beforeMigrations) await db.query(beforeMigrations);
   for (const file of migrationFiles()) {
     await db.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }

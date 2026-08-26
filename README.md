@@ -132,7 +132,7 @@ Required repository secrets:
 | `SUPABASE_DB_PASSWORD` | yes | Migration push |
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | API probes; the project ref is derived from it |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes | API probes |
-| `SUPABASE_DB_URL` | recommended | Exact connection string from the Connect dialog — projects differ on direct vs pooled hosts, so an assembled string is a guess |
+| `SUPABASE_DB_URL` | **yes** | Session pooler string from the Connect dialog. Required: the direct host `db.<ref>.supabase.co` is IPv6-only and unreachable from GitHub runners |
 | `SUPABASE_PROJECT_REF` | no | Derived from the project URL unless set explicitly |
 
 The API probes sign up real users, so the test project needs **email

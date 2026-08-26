@@ -13,28 +13,28 @@ export interface HostedConfig {
 }
 
 /**
- * Direct Postgres connection to the project.
+ * Postgres connection to the project.
  *
- * Prefer SUPABASE_DB_URL copied verbatim from the dashboard: Supabase projects
- * differ in whether they expose a direct or a pooled connection, and in which
- * region host serves the pooler, so a string assembled from a project ref is a
- * guess. The constructed form is a fallback for projects that still serve the
- * direct host.
+ * SUPABASE_DB_URL must be supplied verbatim from the dashboard. There is no
+ * constructed fallback: the direct host is IPv6-only and unreachable from a
+ * GitHub runner, and the pooler's hostname embeds a region that cannot be
+ * derived from the project ref. Guessing it produced a connection error that
+ * read like a network fault rather than a configuration one.
  */
 export function databaseUrl(): string {
   const explicit = process.env.SUPABASE_DB_URL;
   if (explicit) return explicit;
 
-  const ref = process.env.SUPABASE_PROJECT_REF;
-  const password = process.env.SUPABASE_DB_PASSWORD;
-  if (!ref || !password) {
-    throw new Error(
-      "No hosted database connection. Set SUPABASE_DB_URL (preferred — copy it " +
-        "from the project's Connect dialog), or both SUPABASE_PROJECT_REF and " +
-        "SUPABASE_DB_PASSWORD.",
-    );
-  }
-  return `postgresql://postgres:${encodeURIComponent(password)}@db.${ref}.supabase.co:5432/postgres`;
+  throw new Error(
+    "SUPABASE_DB_URL is not set.\n\n" +
+      "It is required rather than optional: a Supabase project's direct host " +
+      "(db.<ref>.supabase.co) resolves to IPv6 only, and GitHub-hosted runners " +
+      "have no IPv6 route — the first hosted run failed with " +
+      "`connect ENETUNREACH 2600:1f10:…:5432`. The pooled connection string is " +
+      "reachable over IPv4.\n\n" +
+      "Copy it from the project's Connect dialog (Session pooler) and store it " +
+      "as the SUPABASE_DB_URL secret.",
+  );
 }
 
 /**

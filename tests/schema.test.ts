@@ -27,6 +27,7 @@ describe("migrations", () => {
     expect(migrationFiles()).toEqual([
       "0001_initial_schema.sql",
       "0002_row_level_security.sql",
+      "0003_revoke_anon_tenant_grants.sql",
     ]);
   });
 
@@ -108,6 +109,45 @@ describe("migrations", () => {
        where schemaname = 'public' and tablename = 'country_profiles'`,
     );
     expect(rows.map((r) => r.cmd)).toEqual(["SELECT"]);
+  });
+
+  it("strips anon grants a hosted project's default privileges would add", async () => {
+    // A hosted Supabase project sets ALTER DEFAULT PRIVILEGES so new public
+    // tables are granted to anon and authenticated automatically. A bare cluster
+    // does not, so the first real hosted run was the first time anon held SELECT
+    // on every tenant table. Reproducing that here keeps 0003 honest.
+    const name = "tmh_test_hosted_defaults";
+    const withDefaults = await createMigratedDatabase(
+      name,
+      "alter default privileges in schema public grant all on tables to anon, authenticated;",
+    );
+
+    try {
+      const { rows } = await withDefaults.query<{
+        table_name: string;
+        privilege_type: string;
+      }>(
+        `select table_name, privilege_type from information_schema.role_table_grants
+         where grantee = 'anon' and table_schema = 'public'`,
+      );
+
+      // anon keeps exactly one privilege: reading public reference data.
+      const tenantGrants = rows.filter((r) =>
+        (TENANT_TABLES as readonly string[]).includes(r.table_name),
+      );
+      expect(tenantGrants, "anon must hold no grant on any tenant table").toEqual(
+        [],
+      );
+
+      const referenceGrants = rows
+        .filter((r) => r.table_name === "country_profiles")
+        .map((r) => r.privilege_type)
+        .sort();
+      expect(referenceGrants).toEqual(["SELECT"]);
+    } finally {
+      await withDefaults.end();
+      await dropDatabase(name);
+    }
   });
 
   it("is reproducible — a second fresh database yields the same schema", async () => {
