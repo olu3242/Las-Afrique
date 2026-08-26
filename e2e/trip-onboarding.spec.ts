@@ -184,6 +184,37 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- the dashboard composing every engine -------------------------------
+    // Iteration 7. Each panel here is rendered from the engine that owns it;
+    // the dashboard computes none of them.
+    const focusSection = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Lagos$/ }),
+    });
+    await expect(focusSection).toBeVisible();
+
+    // The route motif's four stages, carrying real state.
+    for (const stage of ["Plan", "Prepare", "Budget", "Go home"]) {
+      await expect(focusSection.getByText(stage, { exact: true })).toBeVisible();
+    }
+
+    // Exactly one stage may be in progress, or the motif shows two "you are
+    // here" markers.
+    await expect(
+      focusSection.getByText("— In progress", { exact: false }),
+    ).toHaveCount(1);
+
+    // Readiness and the country guide, from their own engines.
+    await expect(focusSection).toContainText(/counts what we hold/i);
+    await expect(focusSection).toContainText(/not yet verified/i);
+
+    // The budget figure, labelled illustrative on the dashboard too — the
+    // caveat cannot be left behind on the trip page.
+    await expect(focusSection).toContainText(/planning target/i);
+    await expect(focusSection).toContainText(/illustrative figures/i);
+
+    await focusSection.getByRole("link", { name: /open this trip/i }).click();
+    await expect(page).toHaveURL(new RegExp(`${tripUrl.split("/").pop()}$`));
+
     // --- planner, and its refusal to invent -------------------------------
     // Iteration 6. No model provider is configured for this project, so what
     // is provable in a browser is that the planner says so plainly rather
