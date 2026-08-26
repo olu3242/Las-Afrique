@@ -34,81 +34,92 @@ interface Session {
 }
 
 /**
- * Creates a confirmed user directly, then signs in for a real session.
+ * Fetches the project's service-role key through the Management API.
  *
- * Deliberately not the public signup endpoint. Signup is gated by the
- * project's "Confirm email" setting: with it on, every attempt sends mail and
- * returns no session, and a handful of attempts exhaust the email rate limit —
- * so the probes could never obtain a token without changing a project setting.
- *
- * Seeding the row instead uses only what this workflow already holds: database
- * access, and pgcrypto (enabled by migration 0001) to write a bcrypt hash GoTrue
- * will verify. The session that comes back is a genuine one, issued by Auth,
- * carrying real claims — which is the point, since what these probes verify is
- * that PostgREST enforces the policies against a real token.
+ * The key is not a stored secret — it is read at run time using
+ * SUPABASE_ACCESS_TOKEN, which the workflow already holds for the CLI. Nothing
+ * prints it.
  */
-async function createConfirmedUser(db: Client): Promise<Session> {
+async function serviceRoleKey(): Promise<string> {
+  const ref = process.env.SUPABASE_PROJECT_REF;
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!ref || !token) {
+    throw new Error(
+      "Creating confirmed users needs SUPABASE_PROJECT_REF and " +
+        "SUPABASE_ACCESS_TOKEN so the service-role key can be read from the " +
+        "Management API.",
+    );
+  }
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/projects/${ref}/api-keys`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Management API refused the api-keys request (${response.status}). The ` +
+        "access token may lack project scope.",
+    );
+  }
+
+  const keys = (await response.json()) as Array<{ name: string; api_key: string }>;
+  const secret = keys.find((k) => k.name === "service_role");
+  if (!secret?.api_key) {
+    throw new Error(
+      `No service_role key returned. Names present: ${keys
+        .map((k) => k.name)
+        .join(", ")}`,
+    );
+  }
+  return secret.api_key;
+}
+
+/**
+ * Creates a confirmed user through the Auth admin API, then signs in.
+ *
+ * Deliberately not public signup, and deliberately not a hand-seeded row.
+ *
+ * Signup is gated by the project's "Confirm email" setting: with it on, every
+ * attempt sends mail and returns no session, and a few attempts exhaust the
+ * email rate limit.
+ *
+ * Seeding auth.users directly avoided that but coupled the probes to GoTrue's
+ * internal schema, and it did not hold: a hand-written row is missing the
+ * related state GoTrue expects — sign-in answered 500 "Database error querying
+ * schema" whichever columns were backfilled. Chasing that further would have
+ * meant reverse-engineering more internals with each hosted run.
+ *
+ * admin/users with email_confirm is the supported route. GoTrue writes whatever
+ * it needs, no mail is sent, the rate limit is irrelevant, and the project's
+ * confirmation setting does not apply.
+ */
+async function createConfirmedUser(adminKey: string): Promise<Session> {
   const email = `probe-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}@${PROBE_DOMAIN}`;
   const password = `Pw-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
-  const { rows } = await db.query<{ id: string }>(
-    `insert into auth.users (
-       instance_id, id, aud, role, email, encrypted_password,
-       email_confirmed_at, created_at, updated_at,
-       raw_app_meta_data, raw_user_meta_data
-     ) values (
-       '00000000-0000-0000-0000-000000000000', gen_random_uuid(),
-       'authenticated', 'authenticated', $1, crypt($2, gen_salt('bf')),
-       now(), now(), now(),
-       '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb
-     )
-     returning id`,
-    [email, password],
-  );
-  const userId = rows[0].id;
+  const created = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      apikey: adminKey,
+      Authorization: `Bearer ${adminKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password, email_confirm: true }),
+  });
+  const createdBody = await created.json().catch(() => ({}));
 
-  // GoTrue reads its token columns into non-nullable Go strings. A row seeded
-  // without them leaves those NULL, the scan fails, and sign-in returns
-  // 500 "Database error querying schema" — which names GoTrue's schema, not the
-  // row, and sends you looking in the wrong place.
-  //
-  // The column set differs across GoTrue versions, so it is discovered rather
-  // than hardcoded: every character-typed, nullable column on auth.users that
-  // this row left NULL becomes the empty string GoTrue expects.
-  const { rows: nullable } = await db.query<{ column_name: string }>(
-    `select c.column_name
-     from information_schema.columns c
-     where c.table_schema = 'auth'
-       and c.table_name = 'users'
-       and c.data_type in ('character varying', 'text')
-       and c.is_nullable = 'YES'
-       and c.column_name not in ('email', 'encrypted_password')
-       -- Unique columns must stay NULL. auth.users.phone is UNIQUE, and NULLs
-       -- do not collide while empty strings do: setting two seeded users' phone
-       -- to '' violates users_phone_key on the second insert.
-       and not exists (
-         select 1
-         from pg_index i
-         join pg_attribute a
-           on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
-         where i.indrelid = 'auth.users'::regclass
-           and i.indisunique
-           and a.attname = c.column_name
-       )`,
-  );
-
-  if (nullable.length > 0) {
-    // Identifiers cannot be parameterised, so they are quoted — and they come
-    // from information_schema, not from anything caller-supplied.
-    const assignments = nullable
-      .map(({ column_name }) => {
-        const quoted = `"${column_name.replace(/"/g, '""')}"`;
-        return `${quoted} = coalesce(${quoted}, '')`;
-      })
-      .join(", ");
-    await db.query(`update auth.users set ${assignments} where id = $1`, [userId]);
+  if (!created.ok) {
+    if (createdBody.error_code === "email_address_invalid") {
+      throw new Error(
+        `The project rejected the probe domain "${PROBE_DOMAIN}". Set ` +
+          "HOSTED_PROBE_EMAIL_DOMAIN to one it accepts.",
+      );
+    }
+    throw new Error(
+      `admin/users refused (${created.status}): ${JSON.stringify(createdBody)}`,
+    );
   }
 
   const response = await fetch(
@@ -123,14 +134,12 @@ async function createConfirmedUser(db: Client): Promise<Session> {
 
   if (!response.ok || !body.access_token) {
     throw new Error(
-      `Could not sign in the seeded user (${response.status}): ` +
-        `${JSON.stringify(body)}. The row was created directly in auth.users, so ` +
-        "this points at GoTrue rejecting the seeded shape rather than at any " +
-        "project setting.",
+      `Could not sign in the admin-created user (${response.status}): ` +
+        `${JSON.stringify(body)}`,
     );
   }
 
-  return { accessToken: body.access_token, userId, email };
+  return { accessToken: body.access_token, userId: createdBody.id, email };
 }
 
 async function rest(
@@ -195,13 +204,15 @@ describe("hosted API — two signed-in users", () => {
   let bob: Session;
 
   beforeAll(async () => {
+    const adminKey = await serviceRoleKey();
+    alice = await createConfirmedUser(adminKey);
+    bob = await createConfirmedUser(adminKey);
+
     db = new Client({
       connectionString: databaseUrl(),
       ssl: { rejectUnauthorized: false },
     });
     await db.connect();
-    alice = await createConfirmedUser(db);
-    bob = await createConfirmedUser(db);
   });
 
   afterAll(async () => {
