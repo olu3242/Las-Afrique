@@ -1,31 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState } from "react";
 import { addTraveler } from "@/lib/trips/actions";
+import type { TravelerField } from "@/lib/trips/validation";
 import { IDLE } from "@/lib/forms";
 import { Field, inputClass } from "@/components/ui/field";
 import { FormError } from "@/components/ui/form-error";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useFormValues } from "@/components/ui/use-form-values";
 
 export function AddTravelerForm({ tripId }: { tripId: string }) {
   const [state, action] = useActionState(addTraveler, IDLE);
-  const formRef = useRef<HTMLFormElement>(null);
-  const previousState = useRef(state);
-
-  // Clear the fields once a traveller has actually been added, so the next one
-  // starts from an empty form. Keyed on the transition into `idle` rather than
-  // on `idle` itself, or a failed submission that leaves state idle-by-default
-  // would wipe what the user typed.
-  useEffect(() => {
-    if (previousState.current !== state && state.status === "idle") {
-      formRef.current?.reset();
-    }
-    previousState.current = state;
-  }, [state]);
+  const { bind } = useFormValues<TravelerField>(state.values);
+  // No manual reset. The fields are controlled from the action's echoed
+  // values, so a success — which returns no values — clears them, and a
+  // failure puts back exactly what was typed. form.reset() would not have
+  // touched a controlled field anyway.
 
   return (
     <form
-      ref={formRef}
       action={action}
       className="mt-8 flex flex-col gap-5 rounded-2xl border border-ivory/15 bg-indigo-900/30 p-5 sm:p-6"
       noValidate
@@ -41,7 +34,7 @@ export function AddTravelerForm({ tripId }: { tripId: string }) {
             name="fullName"
             type="text"
             autoComplete="off"
-            defaultValue={state.values?.fullName}
+            {...bind("fullName")}
             className={inputClass}
           />
         )}
@@ -59,7 +52,7 @@ export function AddTravelerForm({ tripId }: { tripId: string }) {
             {...props}
             name="relationship"
             type="text"
-            defaultValue={state.values?.relationship}
+            {...bind("relationship")}
             className={inputClass}
           />
         )}
@@ -75,6 +68,7 @@ export function AddTravelerForm({ tripId }: { tripId: string }) {
         {(props) => (
           <input
             {...props}
+            {...bind("passportLast4")}
             name="passportLast4"
             type="text"
             maxLength={4}
@@ -93,6 +87,7 @@ export function AddTravelerForm({ tripId }: { tripId: string }) {
         {(props) => (
           <input
             {...props}
+            {...bind("passportExpiresOn")}
             name="passportExpiresOn"
             type="date"
             className={inputClass}

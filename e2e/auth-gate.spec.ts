@@ -109,4 +109,35 @@ test.describe("protected routes", () => {
       expect(box.width, `${name} width`).toBeGreaterThanOrEqual(24);
     }
   });
+
+  test("keeps what was typed when a submission fails validation", async ({
+    page,
+  }) => {
+    // Covers the echo-back property for text inputs. Worth stating plainly what
+    // this does and does not prove: an <input> survives React 19's post-action
+    // form reset even with a plain defaultValue, so this passes either way and
+    // is a guard against the echo-back being dropped, not a reproduction of the
+    // defect the hosted run found. That defect was specific to <select>, and
+    // the only form here carrying one is behind the auth gate — it is covered
+    // by e2e/trip-onboarding.spec.ts against the real project.
+    await page.goto("/login");
+
+    const email = page.getByLabel("Email address");
+    if ((await email.count()) === 0) {
+      // Unconfigured deployment renders no form; the trip intake form covers
+      // this path against the real project in trip-onboarding.spec.ts.
+      test.skip(true, "No form rendered — Supabase is not configured here.");
+      return;
+    }
+
+    await email.fill("traveller@example.com");
+    // Left blank on purpose: validation fails before any network call, so this
+    // needs no working Supabase project.
+    await page.getByLabel("Password").fill("");
+    await page.getByRole("button", { name: /sign in/i }).click();
+
+    await expect(page.locator("#password-error")).toBeVisible();
+    // The point of the test.
+    await expect(email).toHaveValue("traveller@example.com");
+  });
 });

@@ -16,6 +16,12 @@ export type ActionState<Field extends string = string> = {
   /**
    * What the user typed, echoed back so a failed submission does not empty the
    * form. Never includes a password.
+   *
+   * Bound through `useFormValues` rather than passed as `defaultValue`.
+   * React 19 resets an uncontrolled form after its action runs; inputs survive
+   * that, but a `<select>` reverts to its mount-time default — which silently
+   * cleared the destination country on any trip that failed validation on some
+   * other field.
    */
   values?: Partial<Record<Field, string>>;
 };

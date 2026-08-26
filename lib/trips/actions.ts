@@ -123,9 +123,13 @@ export async function addTraveler(
     return {
       status: "error",
       errors: result.errors,
+      // All four, not just the text ones. Losing a typed passport expiry to a
+      // mistyped name is the same defect as losing the name.
       values: {
         fullName: field(form, "fullName") ?? "",
         relationship: field(form, "relationship") ?? "",
+        passportLast4: field(form, "passportLast4") ?? "",
+        passportExpiresOn: field(form, "passportExpiresOn") ?? "",
       },
     };
   }

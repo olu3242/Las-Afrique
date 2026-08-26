@@ -112,6 +112,17 @@ test.describe("trip onboarding, signed in", () => {
     await page.getByRole("button", { name: /save trip/i }).click();
 
     // --- persistence and the detail consumer --------------------------------
+    // Named errors before the URL check. A bare toHaveURL failure says only
+    // "still on /trips/new", which is what the previous hosted run reported and
+    // it cost a round trip to find out which field had been refused.
+    const fieldErrors = page.locator('[id$="-error"]');
+    await expect(
+      fieldErrors,
+      `validation refused the submission: ${(await fieldErrors.allTextContents()).join(
+        " | ",
+      )}`,
+    ).toHaveCount(0);
+
     await expect(page).toHaveURL(/\/trips\/[0-9a-f-]{36}$/);
     const tripUrl = page.url();
 

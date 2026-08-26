@@ -1,14 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
-import { signIn } from "@/lib/auth/actions";
+import { signIn, type AuthField } from "@/lib/auth/actions";
 import { IDLE } from "@/lib/forms";
 import { Field, inputClass } from "@/components/ui/field";
 import { FormError } from "@/components/ui/form-error";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useFormValues } from "@/components/ui/use-form-values";
 
 export function SignInForm({ next }: { next: string }) {
   const [state, action] = useActionState(signIn, IDLE);
+  const { bind } = useFormValues<AuthField>(state.values);
 
   return (
     <form action={action} className="mt-8 flex flex-col gap-5" noValidate>
@@ -22,7 +24,7 @@ export function SignInForm({ next }: { next: string }) {
             name="email"
             type="email"
             autoComplete="email"
-            defaultValue={state.values?.email}
+            {...bind("email")}
             className={inputClass}
           />
         )}

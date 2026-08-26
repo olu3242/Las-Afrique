@@ -8,10 +8,12 @@ import {
   TRIP_PURPOSES,
 } from "@/lib/trips/validation";
 import type { CountryOption } from "@/lib/trips/service";
+import type { TripField } from "@/lib/trips/validation";
 import { IDLE } from "@/lib/forms";
 import { Field, inputClass } from "@/components/ui/field";
 import { FormError } from "@/components/ui/form-error";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useFormValues } from "@/components/ui/use-form-values";
 
 /**
  * Trip intake.
@@ -24,6 +26,9 @@ import { SubmitButton } from "@/components/ui/submit-button";
 export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
   const [state, action] = useActionState(createTrip, IDLE);
   const errors = state.errors;
+  // Controlled, not defaultValue: React resets an uncontrolled form after the
+  // action runs, so a single field's error would blank the whole form.
+  const { bind } = useFormValues<TripField>(state.values);
 
   return (
     <form action={action} className="mt-10 flex flex-col gap-6" noValidate>
@@ -38,7 +43,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
           <select
             {...props}
             name="destinationCountryKey"
-            defaultValue={state.values?.destinationCountryKey ?? ""}
+            {...bind("destinationCountryKey")}
             className={inputClass}
           >
             <option value="">Choose a country</option>
@@ -62,7 +67,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
             {...props}
             name="destinationCity"
             type="text"
-            defaultValue={state.values?.destinationCity}
+            {...bind("destinationCity")}
             className={inputClass}
           />
         )}
@@ -83,7 +88,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
               name="originCountry"
               type="text"
               autoComplete="country-name"
-              defaultValue={state.values?.originCountry}
+              {...bind("originCountry")}
               className={inputClass}
             />
           )}
@@ -95,7 +100,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
               {...props}
               name="originCity"
               type="text"
-              defaultValue={state.values?.originCity}
+              {...bind("originCity")}
               className={inputClass}
             />
           )}
@@ -111,7 +116,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
               {...props}
               name="departOn"
               type="date"
-              defaultValue={state.values?.departOn}
+              {...bind("departOn")}
               className={inputClass}
             />
           )}
@@ -123,7 +128,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
               {...props}
               name="returnOn"
               type="date"
-              defaultValue={state.values?.returnOn}
+              {...bind("returnOn")}
               className={inputClass}
             />
           )}
@@ -138,7 +143,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
             <select
               {...props}
               name="purpose"
-              defaultValue={state.values?.purpose ?? ""}
+              {...bind("purpose")}
               className={inputClass}
             >
               <option value="">Not sure yet</option>
@@ -166,7 +171,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
               min={1}
               max={MAX_PARTY_SIZE}
               inputMode="numeric"
-              defaultValue={state.values?.partySize}
+              {...bind("partySize")}
               className={inputClass}
             />
           )}
@@ -182,7 +187,7 @@ export function TripIntakeForm({ countries }: { countries: CountryOption[] }) {
             <select
               {...props}
               name="accommodationTier"
-              defaultValue={state.values?.accommodationTier ?? ""}
+              {...bind("accommodationTier")}
               className={inputClass}
             >
               <option value="">Not sure yet</option>
