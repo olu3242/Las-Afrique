@@ -142,9 +142,16 @@ Three Supabase entry points, and picking the wrong one is a security bug:
 
 | Module | Key | Use |
 | --- | --- | --- |
-| `lib/supabase/client.ts` | anon | Browser. Inside RLS. |
-| `lib/supabase/server.ts` | anon + session | Server components and actions. Inside RLS, acting as the signed-in user. |
-| `lib/supabase/admin.ts` | service role | **Bypasses RLS.** Only where genuinely required. |
+| `lib/supabase/client.ts` | publishable | Browser. Inside RLS. |
+| `lib/supabase/server.ts` | publishable + session | Server components and actions. Inside RLS, acting as the signed-in user. |
+| `lib/supabase/admin.ts` | secret | **Bypasses RLS.** Only where genuinely required. |
+
+Both Supabase key generations are accepted — publishable/secret
+(`sb_publishable_…` / `sb_secret_…`) and the legacy anon/service-role JWTs. The
+current names take precedence. `lib/env.ts` owns that resolution; read keys
+through it rather than off `process.env`, and note that `NEXT_PUBLIC_*` names
+must stay written as literal static property paths or Next stops inlining
+them.
 
 Default to `server.ts`. Reach for `admin.ts` only when a privileged operation is
 unavoidable — never to work around a policy you could write instead. Both

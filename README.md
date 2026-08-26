@@ -60,10 +60,20 @@ The site runs at http://localhost:3000.
 `.env.example` documents the full contract. The split matters:
 
 - `NEXT_PUBLIC_*` values are **inlined into the client bundle**. The Supabase
-  anon key belongs there — it is protected by row-level security, not secrecy.
-- `SUPABASE_SERVICE_ROLE_KEY` **bypasses row-level security** and must never
-  reach the browser. Only `lib/supabase/admin.ts` reads it, and that module
-  imports `server-only` so misuse fails the build.
+  publishable key belongs there — it is protected by row-level security, not
+  secrecy.
+- The server secret key **bypasses row-level security** and must never reach
+  the browser. Only `lib/supabase/admin.ts` reads it, and that module imports
+  `server-only` so misuse fails the build.
+
+Both Supabase key generations are accepted, so a project issuing either works:
+
+| Role | Current | Legacy |
+| --- | --- | --- |
+| Public | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) | `NEXT_PUBLIC_SUPABASE_ANON_KEY` (`eyJ…`) |
+| Secret | `SUPABASE_SECRET_KEY` (`sb_secret_…`) | `SUPABASE_SERVICE_ROLE_KEY` |
+
+The current names win when both are set.
 
 The marketing route builds and runs with no configuration at all. Protected
 routes fail closed when Supabase is unconfigured.

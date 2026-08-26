@@ -8,16 +8,16 @@ import type { Database } from "./types";
 /**
  * Server Supabase client, scoped to the caller's session cookies.
  *
- * Still the anon key: this client acts *as the signed-in user*, so RLS applies.
+ * Still the publishable key: this client acts *as the signed-in user*, so RLS applies.
  * That is deliberate — server code should not silently gain the power to read
  * another user's rows. Use `lib/supabase/admin.ts` when a privileged operation
  * is genuinely required.
  */
 export async function createClient() {
-  const { url, anonKey } = requirePublicSupabaseEnv();
+  const { url, publishableKey } = requirePublicSupabaseEnv();
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(url, anonKey, {
+  return createServerClient<Database>(url, publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
