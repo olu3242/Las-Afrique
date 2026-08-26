@@ -19,7 +19,13 @@ import re
 import sys
 import urllib.parse
 
-PLACEHOLDER = re.compile(r"\[YOUR-PASSWORD\]|\[password\]", re.IGNORECASE)
+# Any bracketed token sitting in the password position — between the ":" that
+# ends the username and the "@" that begins the host. Supabase has used several
+# spellings ([YOUR-PASSWORD], [YOUR_PASSWORD], [password]…), and a pattern that
+# enumerates them silently leaves the brackets in place when a new one appears.
+# urlparse then reads "[...]@host" as a bracketed IPv6 literal and dies on the
+# hostname, which is how this first surfaced.
+PLACEHOLDER = re.compile(r"(?<=:)\[[^\]]*\](?=@)")
 
 
 def resolve() -> str:
@@ -37,7 +43,24 @@ def resolve() -> str:
             )
         url = PLACEHOLDER.sub(urllib.parse.quote(password, safe=""), url)
 
-    parsed = urllib.parse.urlparse(url)
+    # Look for a leftover placeholder in the userinfo only. A bracketed *host* is
+    # a legitimate IPv6 literal, so scanning the whole string would reject valid
+    # connection strings.
+    userinfo = url.rsplit("@", 1)[0] if "@" in url else url
+    if re.search(r"\[[^\]]*\]", userinfo):
+        sys.exit(
+            "SUPABASE_DB_URL still contains a bracketed placeholder after "
+            "substitution. Check the string copied from the Connect dialog — the "
+            "password placeholder must sit between ':' and '@'."
+        )
+
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError as error:
+        # Most often a leftover [placeholder], which urlparse reads as an IPv6
+        # literal and rejects on the hostname rather than the real problem.
+        sys.exit(f"SUPABASE_DB_URL could not be parsed: {error}")
+
     if not parsed.hostname:
         sys.exit("SUPABASE_DB_URL is not a valid connection string — no host parsed.")
     if not parsed.password:
