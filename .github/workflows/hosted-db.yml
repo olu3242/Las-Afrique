@@ -23,6 +23,13 @@ jobs:
     name: Apply migrations and prove hosted state
     runs-on: ubuntu-latest
 
+    # The Supabase credentials are GitHub *Environment* secrets, not repository
+    # secrets. Environment secrets are only exposed to a job that declares the
+    # environment — without this line every `secrets.*` below resolves to an
+    # empty string and preflight reports them all missing, which is exactly what
+    # the first two dispatches did.
+    environment: Los Afrique
+
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
