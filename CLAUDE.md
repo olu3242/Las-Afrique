@@ -12,13 +12,15 @@ disagree, the PRD wins — fix the code, or fix the doc if the PRD justifies it.
 
 **Phase 1 — core product, in progress.** The Phase 0 marketing route is complete
 and stays live; Phase 1 is being built behind it in numbered iterations.
+Iterations 1 and 2 are certified against the live Supabase project, not only
+locally — see `docs/ITERATION-STANDARD.md` for what that required.
 
 | Iteration | Scope | State |
 | --- | --- | --- |
 | 0 | Landing page and waitlist | PASS |
 | 1 | Platform foundation — route separation, Supabase, schema, RLS | **PASS** |
-| 2 | Auth and trip onboarding | Built — awaiting hosted browser certification |
-| 3 | Country intelligence | Not started |
+| 2 | Auth and trip onboarding | **PASS** |
+| 3 | Country intelligence | Next |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
 
