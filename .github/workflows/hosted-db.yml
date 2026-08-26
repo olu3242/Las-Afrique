@@ -194,8 +194,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
 
+      # Both suites: the per-iteration journey, and the golden path that
+      # proves the engines compose. The skip guard below covers both.
       - name: Prove the signed-in journey in a browser
-        run: npx playwright test e2e/trip-onboarding.spec.ts
+        run: npx playwright test e2e/trip-onboarding.spec.ts e2e/golden-path.spec.ts
         env:
           HOSTED_PROBE_EMAIL_DOMAIN: ${{ secrets.HOSTED_PROBE_EMAIL_DOMAIN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}

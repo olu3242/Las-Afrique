@@ -132,7 +132,7 @@ An iteration may be declared complete only when
 | 7 | Dashboard | **Pending hosted certification** | Composes every preceding engine and computes none of them. The route motif becomes the trip timeline, derived rather than stored |
 | 8 | Vault | **Pending hosted certification** | Private bucket, ownership enforced by object path, signed short-lived downloads, and reconciliation that reports drift rather than pretending two stores commit atomically |
 | 9 | Reminders | **Pending hosted certification** | Deadlines come from the readiness engine, never a second model. Idempotency is a unique constraint on a deadline-derived key, so a job re-run cannot duplicate; every attempt is recorded on the row |
-| 10 | Golden path | Not started | Blocked on 9 |
+| 10 | Golden path | **Pending hosted certification** | One spec drives the complete MVP path, a second refuses a genuinely signed-in second user on every surface, a third fails closed with no session. Run by the hosted workflow alongside the journey, under the same skip guard |
 
 ### Iteration 2 — what was observed
 
