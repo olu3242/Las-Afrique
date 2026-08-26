@@ -126,7 +126,8 @@ An iteration may be declared complete only when
 | 1 | Platform | **PASS** | Hosted DB certified, and Iteration 2 now closes the half that was open: a rendered route reaches Supabase through `lib/supabase/server.ts`, and the middleware issues and refreshes the cookie session. Proven in a browser against the real project |
 | 2 | Trip onboarding | **PASS** | Certified against the live project: the whole path driven in a browser, plus the adversarial cross-user case. Run [32999396356](https://github.com/olu3242/Las-Afrique/actions/runs/32999396356) on `6e3c08b` |
 | 3 | Country intelligence | **Pending hosted certification** | Built: canonical lookup, freshness derivation, the Country Data Service, and two consumers. `0007` makes a requirement claim unstorable without a named source and a checked date |
-| 4–10 | — | Not started | Each blocked on its predecessor |
+| 4 | Travel readiness | **Pending hosted certification** | Deterministic engine consuming the real country service. Measures what we hold; reports requirement satisfaction as explicitly unknown while no destination is verified |
+| 5–10 | — | Not started | Each blocked on its predecessor |
 
 ### Iteration 2 — what was observed
 

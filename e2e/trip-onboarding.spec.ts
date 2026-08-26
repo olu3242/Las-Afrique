@@ -173,6 +173,26 @@ test.describe("trip onboarding, signed in", () => {
     await expect(page.getByRole("heading", { name: /^1 trip$/ })).toBeVisible();
     await expect(page.getByText(/1 traveller/)).toBeVisible();
 
+    // --- readiness, consumed by the trip ------------------------------------
+    // Iteration 4. The engine is pure, so what a browser adds is proof that
+    // the real trip and traveller rows reach it and that it recomputes.
+    const readiness = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Readiness$/ }),
+    });
+    await expect(readiness).toBeVisible();
+
+    // Ama's passport covers the trip, so one checkable item is recorded.
+    await expect(readiness).toContainText("Passport recorded for Ama Mensah");
+
+    // And the caveat that stops the figure reading as "ready to travel".
+    await expect(readiness).toContainText(
+      /counts what we hold, not whether it meets/i,
+    );
+
+    // The destination is unverified, so verifying it is the next action.
+    await expect(readiness).toContainText(/next action/i);
+    await expect(readiness).toContainText(/Entry requirements for Nigeria/i);
+
     // --- country intelligence, consumed by the trip -------------------------
     // Iteration 3's path ends here: the trip reads the real Country Data
     // Service rather than restating anything about Nigeria itself.
