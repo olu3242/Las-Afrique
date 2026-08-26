@@ -22,8 +22,25 @@ export interface HostedConfig {
  * read like a network fault rather than a configuration one.
  */
 export function databaseUrl(): string {
+  // RESOLVED_DB_URL first: the workflow substitutes the password placeholder
+  // into SUPABASE_DB_URL and exports the result under this name. Reading the raw
+  // secret instead means connecting with a literal "[YOUR_PASSWORD]", which
+  // surfaces as "Connection terminated unexpectedly" — a message that points
+  // nowhere near the cause.
+  const resolved = process.env.RESOLVED_DB_URL;
+  if (resolved) return resolved;
+
   const explicit = process.env.SUPABASE_DB_URL;
-  if (explicit) return explicit;
+  if (explicit && !/\[[^\]]*\]/.test(explicit.split("@")[0])) return explicit;
+
+  if (explicit) {
+    throw new Error(
+      "SUPABASE_DB_URL still contains a password placeholder and " +
+        "RESOLVED_DB_URL is not set. Run this through the hosted workflow, or " +
+        "export RESOLVED_DB_URL yourself:\n" +
+        "  export RESOLVED_DB_URL=$(python3 scripts/resolve-db-url.py)",
+    );
+  }
 
   throw new Error(
     "SUPABASE_DB_URL is not set.\n\n" +

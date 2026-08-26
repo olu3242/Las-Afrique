@@ -164,8 +164,13 @@ jobs:
             npx supabase migration list --linked || true
           fi
 
+      # HOSTED_PROBE_EMAIL_DOMAIN is optional: Supabase rejects example.com and
+      # the reserved .invalid / .test TLDs, so a project may need a domain of its
+      # own for the signup probes.
       - name: Prove hosted schema, RLS and two-user isolation
         run: npm run test:hosted
+        env:
+          HOSTED_PROBE_EMAIL_DOMAIN: ${{ secrets.HOSTED_PROBE_EMAIL_DOMAIN }}
 
       - name: Summary
         if: always()
