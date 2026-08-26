@@ -16,8 +16,8 @@ and stays live; Phase 1 is being built behind it in numbered iterations.
 | Iteration | Scope | State |
 | --- | --- | --- |
 | 0 | Landing page and waitlist | PASS |
-| 1 | Platform foundation — route separation, Supabase, schema, RLS | **ENGINE_PARTIAL** |
-| 2 | Auth and trip onboarding | BLOCKED — needs a real Supabase project |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | **ENGINE_PARTIAL** — hosted DB certified |
+| 2 | Auth and trip onboarding | Not started |
 | 3 | Country intelligence | Not started |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |

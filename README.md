@@ -15,8 +15,8 @@ built behind it in numbered iterations, one branch and PR each:
 | Iteration | Scope | State |
 | --- | --- | --- |
 | 0 | Landing page and waitlist | PASS |
-| 1 | Platform foundation — route separation, Supabase, schema, RLS | ENGINE_PARTIAL |
-| 2 | Auth and trip onboarding | BLOCKED — needs a real Supabase project |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | ENGINE_PARTIAL — hosted DB certified |
+| 2 | Auth and trip onboarding | Not started |
 | 3 | Country intelligence | Not started |
 | 4 | Travel readiness | Not started |
 | 5 | Deterministic budget engine | Not started |
@@ -119,31 +119,72 @@ order with `supabase db push`, and then proves the resulting state:
 - all four policy verbs per tenant table
 - `anon` holding no grant on any tenant table
 - two-user isolation via direct SQL, executing the real policies
-- two-user isolation via the HTTP API, through real signups and PostgREST
+- two-user isolation via the HTTP API, through real sessions and PostgREST
 
 It never resets, drops or recreates anything. `supabase db reset` must not
 appear in that workflow.
 
-Required repository secrets:
+The credentials are **GitHub Environment secrets**, held in the environment named
+`Los Afrique`, and the job declares `environment: Los Afrique` to read them. A
+job without that declaration resolves every one of them to an empty string and
+fails preflight — which is exactly how the first two dispatches failed. Do not
+duplicate them as repository secrets to work around it; declare the environment.
 
-| Secret | Purpose |
-| --- | --- |
-| `SUPABASE_ACCESS_TOKEN` | CLI authentication |
-| `SUPABASE_PROJECT_REF` | Which project to link |
-| `SUPABASE_DB_PASSWORD` | Migration push |
-| `SUPABASE_DB_URL` | *Preferred.* Exact connection string from the Connect dialog — projects differ on direct vs pooled hosts, so an assembled string is a guess |
-| `NEXT_PUBLIC_SUPABASE_URL` | API probes |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | API probes |
+Secrets required:
 
-The API probes sign up real users, so the test project needs **email
-confirmation disabled** — otherwise signup returns no session and the suite
-fails with that explanation rather than passing hollowly.
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | yes | CLI authentication |
+| `SUPABASE_DB_PASSWORD` | yes | Migration push |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | API probes; the project ref is derived from it |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes | API probes |
+| `SUPABASE_DB_URL` | **yes** | Session pooler string from the Connect dialog, pasted **verbatim including the `[YOUR-PASSWORD]` placeholder** — the workflow substitutes `SUPABASE_DB_PASSWORD` with correct percent-encoding. Required: the direct host `db.<ref>.supabase.co` is IPv6-only and unreachable from GitHub runners |
+| `SUPABASE_PROJECT_REF` | no | Derived from the project URL unless set explicitly |
+
+The API probes create their two users through the Auth admin API
+(`POST /auth/v1/admin/users` with `email_confirm: true`), then exchange the
+credentials for real sessions. That route needs no change to the project's
+email-confirmation setting, sends no mail, and is unaffected by the email rate
+limit — all of which public signup runs into. The service-role key it needs is
+read at run time from the Management API using `SUPABASE_ACCESS_TOKEN`; it is
+not a stored secret and is never printed. Each run deletes the users it created.
+
+`HOSTED_PROBE_EMAIL_DOMAIN` is optional: Supabase rejects `example.com` and the
+reserved `.invalid` / `.test` TLDs, so set it if the project refuses the default
+probe domain.
 
 Run them yourself against a project you are pointed at:
 
 ```bash
 npm run test:hosted
 ```
+
+#### Rehearsing before you point at a real project
+
+The probes and the migration push can both be exercised against a throwaway
+local cluster first, which is worth doing before any run that mutates a hosted
+project:
+
+```bash
+npm run db:start
+createdb -h 127.0.0.1 -p 55432 -U postgres rehearsal
+psql -h 127.0.0.1 -p 55432 -U postgres -d rehearsal -f supabase/test/00_auth_shim.sql
+
+URL="postgresql://postgres@127.0.0.1:55432/rehearsal?sslmode=disable"
+npx supabase db push --db-url "$URL" --include-all --skip-vault --dry-run
+npx supabase db push --db-url "$URL" --include-all --skip-vault
+
+SUPABASE_DB_URL="$URL" \
+NEXT_PUBLIC_SUPABASE_URL=http://unused.invalid \
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=unused \
+  npx vitest run --config vitest.hosted.config.ts \
+    tests/hosted/schema.test.ts tests/hosted/rls.test.ts
+```
+
+The auth shim stands in for the `auth` schema Supabase provides. `sslmode=disable`
+is honoured only because the connection string asks for it — Supabase requires
+TLS, so the hosted path is unaffected. The API suite is excluded from a
+rehearsal: it needs PostgREST and GoTrue, which a bare cluster does not have.
 
 ### Continuous integration
 

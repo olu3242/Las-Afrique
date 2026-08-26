@@ -5,8 +5,10 @@ import { Client } from "pg";
 const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
 const SHIM = join(process.cwd(), "supabase", "test", "00_auth_shim.sql");
 
+// `||` rather than `??`: an unset CI variable arrives as an empty string, and
+// `??` would keep it and connect nowhere.
 export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
+  process.env.TEST_DATABASE_URL ||
   "postgres://postgres@127.0.0.1:55432/postgres";
 
 /** Migration files in lexical order — the order they must be applied in. */
@@ -23,7 +25,15 @@ export function migrationFiles(): string[] {
  * Each suite gets its own database so migration order is exercised from scratch
  * rather than against leftover state.
  */
-export async function createMigratedDatabase(name: string): Promise<Client> {
+export async function createMigratedDatabase(
+  name: string,
+  /**
+   * Optional SQL run after the auth shim and before the migrations. Used to
+   * reproduce settings a hosted project carries but a bare cluster does not —
+   * notably the default privileges that grant `anon` on new public tables.
+   */
+  beforeMigrations?: string,
+): Promise<Client> {
   const admin = new Client({ connectionString: TEST_DATABASE_URL });
   await admin.connect();
   await admin.query(`drop database if exists "${name}"`);
@@ -37,6 +47,7 @@ export async function createMigratedDatabase(name: string): Promise<Client> {
   await db.connect();
 
   await db.query(readFileSync(SHIM, "utf8"));
+  if (beforeMigrations) await db.query(beforeMigrations);
   for (const file of migrationFiles()) {
     await db.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }

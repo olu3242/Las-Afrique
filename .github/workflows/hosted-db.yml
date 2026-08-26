@@ -23,6 +23,13 @@ jobs:
     name: Apply migrations and prove hosted state
     runs-on: ubuntu-latest
 
+    # The Supabase credentials are GitHub *Environment* secrets, not repository
+    # secrets. Environment secrets are only exposed to a job that declares the
+    # environment — without this line every `secrets.*` below resolves to an
+    # empty string and preflight reports them all missing, which is exactly what
+    # the first two dispatches did.
+    environment: Los Afrique
+
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -53,7 +60,6 @@ jobs:
         run: |
           missing=()
           [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing+=("SUPABASE_ACCESS_TOKEN")
-          [ -n "$SUPABASE_PROJECT_REF" ]  || missing+=("SUPABASE_PROJECT_REF")
           [ -n "$SUPABASE_DB_PASSWORD" ]  || missing+=("SUPABASE_DB_PASSWORD")
           [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] || missing+=("NEXT_PUBLIC_SUPABASE_URL")
           [ -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ] || missing+=("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
@@ -62,30 +68,114 @@ jobs:
             echo "Add them under Settings → Secrets and variables → Actions."
             exit 1
           fi
+
+          # The project ref is the subdomain of the project URL. Deriving it
+          # rather than requiring it separately removes one secret to set, and
+          # removes the possibility of a ref that disagrees with the URL —
+          # which would link one project and probe another.
+          if [ -z "$SUPABASE_PROJECT_REF" ]; then
+            derived=$(printf '%s' "$NEXT_PUBLIC_SUPABASE_URL" \
+              | sed -E 's#^https?://##; s#\..*$##')
+            if [ -z "$derived" ]; then
+              echo "::error::Could not derive a project ref from NEXT_PUBLIC_SUPABASE_URL"
+              echo "($NEXT_PUBLIC_SUPABASE_URL). Set SUPABASE_PROJECT_REF explicitly."
+              exit 1
+            fi
+            echo "SUPABASE_PROJECT_REF=$derived" >> "$GITHUB_ENV"
+            echo "Derived project ref from the project URL: $derived"
+          else
+            echo "Using the supplied SUPABASE_PROJECT_REF."
+          fi
+
+          # Required, not optional. The project's direct host is IPv6-only and
+          # GitHub runners have no IPv6 route — run 3 failed with
+          # `connect ENETUNREACH 2600:1f10:…:5432` after migrations had already
+          # applied. The pooled string is reachable over IPv4.
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::warning::SUPABASE_DB_URL not set — falling back to a connection"
-            echo "string assembled from the project ref. If the probes cannot connect,"
-            echo "copy the exact string from the project's Connect dialog into that secret."
+            echo "::error::SUPABASE_DB_URL is not set."
+            echo "The migration push can reach the project through the CLI, but the"
+            echo "hosted probes connect directly, and db.<ref>.supabase.co is IPv6-only."
+            echo "Copy the Session pooler string from the project's Connect dialog and"
+            echo "store it as the SUPABASE_DB_URL secret."
+            exit 1
           fi
           echo "Preflight OK."
+
+      # Supabase's Connect dialog hands you the string with a literal
+      # [YOUR-PASSWORD] placeholder. Substituting it by hand is where this goes
+      # wrong: a password containing @ : / ? # or & silently corrupts the URL,
+      # and a rotated password leaves the old one embedded. Both surface only as
+      # "password authentication failed", which names the wrong cause.
+      #
+      # So paste the string verbatim, placeholder and all, and let this fill in
+      # SUPABASE_DB_PASSWORD with correct percent-encoding.
+      - name: Resolve the database URL
+        run: |
+          RESOLVED=$(python3 "$GITHUB_WORKSPACE/scripts/resolve-db-url.py") || exit 1
+          echo "::add-mask::$RESOLVED"
+          echo "RESOLVED_DB_URL=$RESOLVED" >> "$GITHUB_ENV"
+          python3 "$GITHUB_WORKSPACE/scripts/resolve-db-url.py" --describe
 
       - name: Show migrations this run will apply
         run: ls -1 supabase/migrations/
 
+      # Skipped when SUPABASE_DB_URL is supplied: pushing by connection string
+      # needs no link, and avoids guessing direct-vs-pooler hosts entirely.
       - name: Link to the project
-        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        if: env.SUPABASE_DB_URL == ''
+        run: |
+          npx supabase link \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --password "$SUPABASE_DB_PASSWORD"
 
-      # `db push` applies pending migrations in order. It does not reset, drop or
-      # recreate anything — that is deliberate, and `db reset` must never appear
-      # in this workflow.
+      # Shows exactly what the next step will apply, before it applies it.
+      - name: Preview migrations (dry run)
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase db push --db-url "$RESOLVED_DB_URL" \
+              --include-all --skip-vault --dry-run
+          else
+            npx supabase db push --linked --include-all --skip-vault --dry-run
+          fi
+
+      # Applies pending migrations in order. It does not reset, drop or recreate
+      # anything — that is deliberate, and `db reset` must never appear here.
+      #
+      # --skip-vault matters: without it, `db push` updates the project's vault
+      # secrets from config.toml before running migrations. config.toml here is
+      # the stock CLI default, so that would rewrite project configuration this
+      # workflow has no business touching.
+      #
+      # --include-seed is likewise omitted: no seed data is pushed.
       - name: Apply migrations
-        run: npx supabase db push --include-all
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase db push --db-url "$RESOLVED_DB_URL" \
+              --include-all --skip-vault
+          else
+            npx supabase db push --linked --include-all --skip-vault
+          fi
 
       - name: Hosted migration history
-        run: npx supabase migration list || true
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            npx supabase migration list --db-url "$RESOLVED_DB_URL" || true
+          else
+            npx supabase migration list --linked || true
+          fi
 
+      # HOSTED_PROBE_EMAIL_DOMAIN is optional: Supabase rejects example.com and
+      # the reserved .invalid / .test TLDs, so a project may need a domain of its
+      # own for the signup probes.
       - name: Prove hosted schema, RLS and two-user isolation
         run: npm run test:hosted
+        env:
+          HOSTED_PROBE_EMAIL_DOMAIN: ${{ secrets.HOSTED_PROBE_EMAIL_DOMAIN }}
+          # The probes read the project's service-role key at run time through
+          # the Management API, using the access token already present above, so
+          # that key never has to be stored as a secret of its own.
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Summary
         if: always()

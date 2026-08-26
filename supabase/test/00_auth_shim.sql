@@ -13,10 +13,35 @@
 
 create schema if not exists auth;
 
+-- Mirrors the columns of GoTrue's auth.users that this project actually writes,
+-- so a seeded-user insert can be rehearsed locally instead of discovered in a
+-- hosted run. Not the full table — GoTrue's is much wider — just the subset the
+-- probes touch.
 create table if not exists auth.users (
-  id            uuid primary key default gen_random_uuid(),
-  email         text unique,
-  created_at    timestamptz not null default now()
+  instance_id        uuid,
+  id                 uuid primary key default gen_random_uuid(),
+  aud                varchar(255),
+  role               varchar(255),
+  email              varchar(255) unique,
+  encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
+  raw_app_meta_data  jsonb,
+  raw_user_meta_data jsonb,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  -- GoTrue scans these into non-nullable Go strings. Present here so the
+  -- seeded-user backfill is rehearsed rather than discovered in a hosted run.
+  confirmation_token      varchar(255),
+  recovery_token          varchar(255),
+  email_change_token_new  varchar(255),
+  email_change            varchar(255),
+  phone_change            varchar(255),
+  phone_change_token      varchar(255),
+  reauthentication_token  varchar(255),
+  -- UNIQUE, exactly as GoTrue declares it. Present so the backfill's exclusion
+  -- of unique columns is rehearsed: two seeded users both set to '' would
+  -- collide here, which is how it failed hosted.
+  phone                   text unique
 );
 
 -- Reads the subject claim the same way Supabase's does: from the request-scoped

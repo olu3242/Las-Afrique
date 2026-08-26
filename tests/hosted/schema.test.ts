@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { databaseUrl, repoMigrationVersions } from "./connection";
+import { databaseUrl, repoMigrationVersions, sslConfig } from "./connection";
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
 
 /**
@@ -13,10 +13,8 @@ describe("hosted schema", () => {
   let db: Client;
 
   beforeAll(async () => {
-    db = new Client({
-      connectionString: databaseUrl(),
-      ssl: { rejectUnauthorized: false },
-    });
+    const url = databaseUrl();
+    db = new Client({ connectionString: url, ssl: sslConfig(url) });
     await db.connect();
   });
 

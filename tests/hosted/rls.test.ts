@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { databaseUrl } from "./connection";
+import { databaseUrl, sslConfig } from "./connection";
 
 /**
  * Two-user isolation against the hosted project, executing the real policies
@@ -35,17 +35,17 @@ describe("hosted row-level security", () => {
   }
 
   beforeAll(async () => {
-    db = new Client({
-      connectionString: databaseUrl(),
-      ssl: { rejectUnauthorized: false },
-    });
+    const url = databaseUrl();
+    db = new Client({ connectionString: url, ssl: sslConfig(url) });
     await db.connect();
 
     const mk = async (email: string) => {
+      // Only id and email. Every other auth.users column is left to its
+      // default, which keeps this portable across a real project and a local
+      // rehearsal cluster — and avoids writing more into the auth schema than
+      // the probe actually needs.
       const { rows } = await db.query<{ id: string }>(
-        `insert into auth.users (id, email, instance_id, aud, role)
-         values (gen_random_uuid(), $1, '00000000-0000-0000-0000-000000000000',
-                 'authenticated', 'authenticated')
+        `insert into auth.users (id, email) values (gen_random_uuid(), $1)
          returning id`,
         [email],
       );

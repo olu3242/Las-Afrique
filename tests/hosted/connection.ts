@@ -13,28 +13,59 @@ export interface HostedConfig {
 }
 
 /**
- * Direct Postgres connection to the project.
+ * Postgres connection to the project.
  *
- * Prefer SUPABASE_DB_URL copied verbatim from the dashboard: Supabase projects
- * differ in whether they expose a direct or a pooled connection, and in which
- * region host serves the pooler, so a string assembled from a project ref is a
- * guess. The constructed form is a fallback for projects that still serve the
- * direct host.
+ * SUPABASE_DB_URL must be supplied verbatim from the dashboard. There is no
+ * constructed fallback: the direct host is IPv6-only and unreachable from a
+ * GitHub runner, and the pooler's hostname embeds a region that cannot be
+ * derived from the project ref. Guessing it produced a connection error that
+ * read like a network fault rather than a configuration one.
  */
 export function databaseUrl(): string {
-  const explicit = process.env.SUPABASE_DB_URL;
-  if (explicit) return explicit;
+  // RESOLVED_DB_URL first: the workflow substitutes the password placeholder
+  // into SUPABASE_DB_URL and exports the result under this name. Reading the raw
+  // secret instead means connecting with a literal "[YOUR_PASSWORD]", which
+  // surfaces as "Connection terminated unexpectedly" — a message that points
+  // nowhere near the cause.
+  const resolved = process.env.RESOLVED_DB_URL;
+  if (resolved) return resolved;
 
-  const ref = process.env.SUPABASE_PROJECT_REF;
-  const password = process.env.SUPABASE_DB_PASSWORD;
-  if (!ref || !password) {
+  const explicit = process.env.SUPABASE_DB_URL;
+  if (explicit && !/\[[^\]]*\]/.test(explicit.split("@")[0])) return explicit;
+
+  if (explicit) {
     throw new Error(
-      "No hosted database connection. Set SUPABASE_DB_URL (preferred — copy it " +
-        "from the project's Connect dialog), or both SUPABASE_PROJECT_REF and " +
-        "SUPABASE_DB_PASSWORD.",
+      "SUPABASE_DB_URL still contains a password placeholder and " +
+        "RESOLVED_DB_URL is not set. Run this through the hosted workflow, or " +
+        "export RESOLVED_DB_URL yourself:\n" +
+        "  export RESOLVED_DB_URL=$(python3 scripts/resolve-db-url.py)",
     );
   }
-  return `postgresql://postgres:${encodeURIComponent(password)}@db.${ref}.supabase.co:5432/postgres`;
+
+  throw new Error(
+    "SUPABASE_DB_URL is not set.\n\n" +
+      "It is required rather than optional: a Supabase project's direct host " +
+      "(db.<ref>.supabase.co) resolves to IPv6 only, and GitHub-hosted runners " +
+      "have no IPv6 route — the first hosted run failed with " +
+      "`connect ENETUNREACH 2600:1f10:…:5432`. The pooled connection string is " +
+      "reachable over IPv4.\n\n" +
+      "Copy it from the project's Connect dialog (Session pooler) and store it " +
+      "as the SUPABASE_DB_URL secret.",
+  );
+}
+
+/**
+ * TLS settings for the hosted connection.
+ *
+ * Supabase requires TLS, so that is the default. A connection string that opts
+ * out explicitly (`sslmode=disable`) is honoured, which is what makes it
+ * possible to rehearse this suite against a local cluster before pointing it at
+ * the real project.
+ */
+export function sslConfig(url: string): false | { rejectUnauthorized: boolean } {
+  return /[?&]sslmode=disable(&|$)/.test(url)
+    ? false
+    : { rejectUnauthorized: false };
 }
 
 export function apiConfig(): { supabaseUrl: string; publishableKey: string } {
