@@ -9,6 +9,8 @@ import {
 import { RouteMotif } from "@/components/ui/route-motif";
 import { getCountryGuide } from "@/lib/country/service";
 import { CountryGuideCard } from "@/components/ui/country-guide-card";
+import { getTripReadiness } from "@/lib/readiness/service";
+import { ReadinessPanel } from "@/components/ui/readiness-panel";
 import { TravelerList } from "./traveler-list";
 import { AddTravelerForm } from "./add-traveler-form";
 
@@ -64,6 +66,11 @@ export default async function TripDetailPage({
   // destination, or names one with no guide.
   const guide = await getCountryGuide(trip.destination_country_key);
 
+  // Consumes the real readiness engine, which in turn consumes the real
+  // country service. Derived on every request, so it cannot go stale against
+  // the rows it describes.
+  const readiness = await getTripReadiness(trip, travelers);
+
   const facts: Array<{ term: string; value: string }> = [
     { term: "Destination", value: [trip.destination_city, destinationName].filter(Boolean).join(", ") || "—" },
     { term: "Travelling from", value: [trip.origin_city, trip.origin_country].filter(Boolean).join(", ") || "Not set" },
@@ -109,6 +116,15 @@ export default async function TripDetailPage({
             </div>
           ))}
         </dl>
+      </section>
+
+      <section className="mt-14" aria-labelledby="readiness">
+        <h2 id="readiness" className="font-display text-xl text-ivory">
+          Readiness
+        </h2>
+        <div className="mt-5">
+          <ReadinessPanel readiness={readiness} />
+        </div>
       </section>
 
       <section className="mt-14" aria-labelledby="travellers">
