@@ -19,7 +19,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 2 | Auth and trip onboarding | PASS |
 | 3 | Country intelligence | Built — awaiting hosted certification |
 | 4 | Travel readiness | Built — awaiting hosted certification |
-| 5 | Deterministic budget engine | Not started |
+| 5 | Deterministic budget engine | Built — awaiting hosted certification |
 
 An iteration counts as done only when its whole path works end to end and
 consumes the real engine before it — see

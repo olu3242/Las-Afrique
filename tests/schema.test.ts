@@ -39,6 +39,7 @@ describe("migrations", () => {
       "0005_seed_country_identity.sql",
       "0006_tenant_consistent_foreign_keys.sql",
       "0007_country_provenance_integrity.sql",
+      "0008_cost_assumptions.sql",
     ]);
   });
 
