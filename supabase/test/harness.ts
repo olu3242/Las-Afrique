@@ -5,8 +5,10 @@ import { Client } from "pg";
 const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
 const SHIM = join(process.cwd(), "supabase", "test", "00_auth_shim.sql");
 
+// `||` rather than `??`: an unset CI variable arrives as an empty string, and
+// `??` would keep it and connect nowhere.
 export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
+  process.env.TEST_DATABASE_URL ||
   "postgres://postgres@127.0.0.1:55432/postgres";
 
 /** Migration files in lexical order — the order they must be applied in. */

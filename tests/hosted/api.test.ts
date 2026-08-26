@@ -20,7 +20,11 @@ import { apiConfig } from "./connection";
  */
 const { supabaseUrl, publishableKey } = apiConfig();
 
-const PROBE_DOMAIN = process.env.HOSTED_PROBE_EMAIL_DOMAIN ?? "takemehome-probe.dev";
+// `||`, not `??`. An unset GitHub secret arrives as an empty string, which is
+// not nullish — `??` kept it, the address ended at "probe-xxx@", and the project
+// rejected it as an invalid format rather than as a missing domain.
+const PROBE_DOMAIN =
+  process.env.HOSTED_PROBE_EMAIL_DOMAIN || "takemehome-probe.dev";
 
 interface Session {
   accessToken: string;

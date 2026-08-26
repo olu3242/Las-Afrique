@@ -23,7 +23,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
 
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL: process.env.E2E_BASE_URL || "http://127.0.0.1:3000",
     trace: "on-first-retry",
     launchOptions: chromiumPath ? { executablePath: chromiumPath } : {},
   },
