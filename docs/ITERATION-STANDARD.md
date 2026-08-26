@@ -125,14 +125,14 @@ An iteration may be declared complete only when
 | 0 | Phase 0 landing page | PASS | Waitlist submit is local-only; no backend exists yet to integrate with |
 | 1 | Platform | **PASS** | Hosted DB certified, and Iteration 2 now closes the half that was open: a rendered route reaches Supabase through `lib/supabase/server.ts`, and the middleware issues and refreshes the cookie session. Proven in a browser against the real project |
 | 2 | Trip onboarding | **PASS** | Certified against the live project: the whole path driven in a browser, plus the adversarial cross-user case. Run [32999396356](https://github.com/olu3242/Las-Afrique/actions/runs/32999396356) on `6e3c08b` |
-| 3 | Country intelligence | **Pending hosted certification** | Built: canonical lookup, freshness derivation, the Country Data Service, and two consumers. `0007` makes a requirement claim unstorable without a named source and a checked date |
-| 4 | Travel readiness | **Pending hosted certification** | Deterministic engine consuming the real country service. Measures what we hold; reports requirement satisfaction as explicitly unknown while no destination is verified |
-| 5 | Budget | **Pending hosted certification** | Deterministic engine over stated rates. Rates carry a basis — illustrative or verified — under the same provenance rule as country claims, and every figure derived from a placeholder says so on screen |
+| 3 | Country intelligence | **PASS** | Certified against the live project — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. `0007` makes a requirement claim unstorable without a named source and a checked date |
+| 4 | Travel readiness | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Measures what we hold; reports requirement satisfaction as explicitly unknown while no destination is verified |
+| 5 | Budget | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Deterministic over stated rates; every figure resting on a placeholder says so on screen |
 | 6 | AI planner | **ENGINE_PARTIAL** | Tool snapshot, contract, verifier, refusal path and UI are real and tested. The model call is not: no provider is configured for this project — no SDK, no key — so `planTrip` reports unavailable rather than returning a stub plan |
-| 7 | Dashboard | **Pending hosted certification** | Composes every preceding engine and computes none of them. The route motif becomes the trip timeline, derived rather than stored |
-| 8 | Vault | **Pending hosted certification** | Private bucket, ownership enforced by object path, signed short-lived downloads, and reconciliation that reports drift rather than pretending two stores commit atomically |
-| 9 | Reminders | **Pending hosted certification** | Deadlines come from the readiness engine, never a second model. Idempotency is a unique constraint on a deadline-derived key, so a job re-run cannot duplicate; every attempt is recorded on the row |
-| 10 | Golden path | **Pending hosted certification** | One spec drives the complete MVP path, a second refuses a genuinely signed-in second user on every surface, a third fails closed with no session. Run by the hosted workflow alongside the journey, under the same skip guard |
+| 7 | Dashboard | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Composes every preceding engine and computes none of them |
+| 8 | Vault | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Private bucket, ownership by object path, short-lived signed downloads, reconciliation that reports drift |
+| 9 | Reminders | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Deadlines from the readiness engine; idempotency is a unique constraint on a deadline-derived key |
+| 10 | Golden path | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Complete MVP path, adversarial second signed-in user on every surface, and the signed-out path |
 
 ### Iteration 2 — what was observed
 

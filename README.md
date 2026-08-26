@@ -17,9 +17,14 @@ built behind it in numbered iterations, one branch and PR each:
 | 0 | Landing page and waitlist | PASS |
 | 1 | Platform foundation — route separation, Supabase, schema, RLS | PASS |
 | 2 | Auth and trip onboarding | PASS |
-| 3 | Country intelligence | Built — awaiting hosted certification |
-| 4 | Travel readiness | Built — awaiting hosted certification |
-| 5 | Deterministic budget engine | Built — awaiting hosted certification |
+| 3 | Country intelligence | PASS |
+| 4 | Travel readiness | PASS |
+| 5 | Deterministic budget engine | PASS |
+| 6 | AI planner | ENGINE_PARTIAL — no provider configured |
+| 7 | Dashboard | PASS |
+| 8 | Document vault | PASS |
+| 9 | Reminders | PASS |
+| 10 | Golden path | PASS |
 
 An iteration counts as done only when its whole path works end to end and
 consumes the real engine before it — see

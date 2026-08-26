@@ -12,17 +12,27 @@ disagree, the PRD wins — fix the code, or fix the doc if the PRD justifies it.
 
 **Phase 1 — core product, in progress.** The Phase 0 marketing route is complete
 and stays live; Phase 1 is being built behind it in numbered iterations.
-Iterations 1 and 2 are certified against the live Supabase project, not only
-locally — see `docs/ITERATION-STANDARD.md` for what that required.
+Iterations 1-5 and 7-10 are certified against the live Supabase project, not
+only locally — see `docs/ITERATION-STANDARD.md` for what that required.
+
+Iteration 6 is deliberately **not** certified. No AI provider is configured for
+this project, so `planTrip` reports unavailable rather than returning a stub
+plan. The standard forbids converting missing evidence into PASS, and a mock
+standing in for a dependency that does not exist is exactly the case it names.
 
 | Iteration | Scope | State |
 | --- | --- | --- |
 | 0 | Landing page and waitlist | PASS |
 | 1 | Platform foundation — route separation, Supabase, schema, RLS | **PASS** |
 | 2 | Auth and trip onboarding | **PASS** |
-| 3 | Country intelligence | Built — awaiting hosted certification |
-| 4 | Travel readiness | Built — awaiting hosted certification |
-| 5 | Deterministic budget engine | Built — awaiting hosted certification |
+| 3 | Country intelligence | **PASS** |
+| 4 | Travel readiness | **PASS** |
+| 5 | Deterministic budget engine | **PASS** |
+| 6 | AI planner | **ENGINE_PARTIAL** — no provider configured |
+| 7 | Dashboard | **PASS** |
+| 8 | Document vault | **PASS** |
+| 9 | Reminders | **PASS** |
+| 10 | Golden path | **PASS** |
 
 Each iteration ships on its own branch and PR. Phase 2 scope (group
 coordination, referrals, native apps, post-arrival concierge) stays out
