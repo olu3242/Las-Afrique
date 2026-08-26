@@ -48,6 +48,10 @@ export type AccommodationTier =
 
 export type VerificationState = "unverified" | "verified" | "stale";
 
+export type ReminderChannel = "email" | "push" | "in_app";
+
+export type ReminderStatus = "pending" | "sent" | "failed" | "cancelled";
+
 export type CostCategory =
   | "flights"
   | "accommodation"
@@ -114,6 +118,24 @@ export interface CostAssumptionRow {
   source_name: string | null;
   source_url: string | null;
   last_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReminderRow {
+  id: string;
+  user_id: string;
+  trip_id: string | null;
+  subject: string;
+  body: string;
+  channel: ReminderChannel;
+  due_at: string;
+  status: ReminderStatus;
+  attempts: number;
+  last_error: string | null;
+  sent_at: string | null;
+  /** Stable for a given deadline, so a job that runs twice sends once. */
+  dedupe_key: string;
   created_at: string;
   updated_at: string;
 }
@@ -223,6 +245,7 @@ export interface Database {
       cost_estimates: Table<CostEstimateRow>;
       savings_plans: Table<SavingsPlanRow>;
       vault_files: Table<VaultFileRow>;
+      reminders: Table<ReminderRow>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -236,6 +259,8 @@ export interface Database {
       cost_category: CostCategory;
       cost_unit: CostUnit;
       assumption_basis: AssumptionBasis;
+      reminder_channel: ReminderChannel;
+      reminder_status: ReminderStatus;
     };
   };
 }
@@ -249,6 +274,7 @@ export const TENANT_TABLES = [
   "cost_estimates",
   "savings_plans",
   "vault_files",
+  "reminders",
 ] as const;
 
 /** Tables that are public reference data rather than tenant-scoped. */

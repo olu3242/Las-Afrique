@@ -240,6 +240,14 @@ test.describe("trip onboarding, signed in", () => {
     // --- budget, consumed by the trip ---------------------------------------
     // Iteration 5. The trip was created with 2 travellers and real dates, so
     // the engine has enough to compute from.
+    // Iteration 9's consumer. A brand-new trip has no document deadlines yet,
+    // so the panel must say that rather than render an empty list.
+    const reminders = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Reminders$/ }),
+    });
+    await expect(reminders).toBeVisible();
+    await expect(reminders).toContainText(/nothing is scheduled yet/i);
+
     const budget = page.locator("section", {
       has: page.getByRole("heading", { name: /^Budget$/ }),
     });

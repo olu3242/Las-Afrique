@@ -13,6 +13,8 @@ import { getTripReadiness } from "@/lib/readiness/service";
 import { ReadinessPanel } from "@/components/ui/readiness-panel";
 import { getTripBudget } from "@/lib/budget/service";
 import { BudgetPanel } from "@/components/ui/budget-panel";
+import { listTripReminders } from "@/lib/reminders/service";
+import { RemindersPanel } from "@/components/ui/reminders-panel";
 import { buildPlannerTools } from "@/lib/planner/tools";
 import { planTrip } from "@/lib/planner/service";
 import { PlannerPanel } from "@/components/ui/planner-panel";
@@ -81,6 +83,9 @@ export default async function TripDetailPage({
   // Every figure here comes from the deterministic engine. The panel renders
   // them and derives bar widths; it does not compute an estimate.
   const budget = await getTripBudget(trip);
+  // Derived from readiness deadlines by the reminders engine; this page keeps
+  // no second model of what is due.
+  const reminders = await listTripReminders(trip.id);
 
   // The planner may only speak in terms of what the engines produced. The
   // snapshot is the complete set of things a plan is allowed to say, and a
@@ -155,6 +160,13 @@ export default async function TripDetailPage({
         <div className="mt-5">
           <PlannerPanel outcome={plan} tools={plannerTools} />
         </div>
+      </section>
+
+      <section className="mt-14" aria-labelledby="reminders">
+        <h2 id="reminders" className="font-display text-xl text-ivory">
+          Reminders
+        </h2>
+        <RemindersPanel reminders={reminders} />
       </section>
 
       <section className="mt-14" aria-labelledby="budget">
