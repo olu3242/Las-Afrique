@@ -101,6 +101,21 @@ jobs:
           fi
           echo "Preflight OK."
 
+      # Supabase's Connect dialog hands you the string with a literal
+      # [YOUR-PASSWORD] placeholder. Substituting it by hand is where this goes
+      # wrong: a password containing @ : / ? # or & silently corrupts the URL,
+      # and a rotated password leaves the old one embedded. Both surface only as
+      # "password authentication failed", which names the wrong cause.
+      #
+      # So paste the string verbatim, placeholder and all, and let this fill in
+      # SUPABASE_DB_PASSWORD with correct percent-encoding.
+      - name: Resolve the database URL
+        run: |
+          RESOLVED=$(python3 "$GITHUB_WORKSPACE/scripts/resolve-db-url.py") || exit 1
+          echo "::add-mask::$RESOLVED"
+          echo "RESOLVED_DB_URL=$RESOLVED" >> "$GITHUB_ENV"
+          python3 "$GITHUB_WORKSPACE/scripts/resolve-db-url.py" --describe
+
       - name: Show migrations this run will apply
         run: ls -1 supabase/migrations/
 
@@ -117,7 +132,7 @@ jobs:
       - name: Preview migrations (dry run)
         run: |
           if [ -n "$SUPABASE_DB_URL" ]; then
-            npx supabase db push --db-url "$SUPABASE_DB_URL" \
+            npx supabase db push --db-url "$RESOLVED_DB_URL" \
               --include-all --skip-vault --dry-run
           else
             npx supabase db push --linked --include-all --skip-vault --dry-run
@@ -135,7 +150,7 @@ jobs:
       - name: Apply migrations
         run: |
           if [ -n "$SUPABASE_DB_URL" ]; then
-            npx supabase db push --db-url "$SUPABASE_DB_URL" \
+            npx supabase db push --db-url "$RESOLVED_DB_URL" \
               --include-all --skip-vault
           else
             npx supabase db push --linked --include-all --skip-vault
@@ -144,7 +159,7 @@ jobs:
       - name: Hosted migration history
         run: |
           if [ -n "$SUPABASE_DB_URL" ]; then
-            npx supabase migration list --db-url "$SUPABASE_DB_URL" || true
+            npx supabase migration list --db-url "$RESOLVED_DB_URL" || true
           else
             npx supabase migration list --linked || true
           fi
