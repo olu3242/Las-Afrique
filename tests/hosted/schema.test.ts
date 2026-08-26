@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { databaseUrl, repoMigrationVersions, sslConfig } from "./connection";
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
+import {
+  expectProfileTrigger,
+  expectTenantConsistentTripKeys,
+} from "../support/schema-queries";
 
 /**
  * Proves the hosted project's actual state — not that a migration command
@@ -91,6 +95,41 @@ describe("hosted schema", () => {
        where schemaname = 'public' and tablename = 'country_profiles'`,
     );
     expect(rows.map((r) => r.cmd)).toEqual(["SELECT"]);
+  });
+
+  it("provisions a profile from the auth trigger", async () => {
+    // 0004. Asserted with the shared helper so the identical check runs
+    // locally too — these queries were hosted-only once, and both were wrong.
+    await expectProfileTrigger(db);
+  });
+
+  it("carries the launch countries with no fabricated requirements", async () => {
+    const { rows } = await db.query<{
+      key: string;
+      verification_state: string;
+      visa_entry_info: unknown;
+      source_url: string | null;
+    }>(
+      `select key, verification_state, visa_entry_info, source_url
+       from public.country_profiles order by sort_order`,
+    );
+
+    expect(rows.length).toBeGreaterThanOrEqual(11);
+    expect(rows.map((r) => r.key)).toContain("nigeria");
+
+    // The rule that matters on a live project: a country may be listed, but
+    // nothing may claim what it requires of a traveller until a real source
+    // backs it. Anything verified here arrived from Iteration 3, not 0005 —
+    // so only the unverified rows are held to the no-claims standard.
+    for (const row of rows.filter((r) => r.verification_state === "unverified")) {
+      expect(row.visa_entry_info, row.key).toBeNull();
+      expect(row.source_url, row.key).toBeNull();
+    }
+  });
+
+  it("ties every trip child row to the trip's owner", async () => {
+    // 0006.
+    await expectTenantConsistentTripKeys(db);
   });
 
   it("withholds any tenant-table grant from anonymous callers", async () => {

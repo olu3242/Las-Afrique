@@ -177,6 +177,63 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      # ---------------------------------------------------------------------
+      # The browser half of the Iteration 2 engine.
+      #
+      # tests/hosted proves the API path; this proves the path a user actually
+      # takes — the shipped forms, the real server actions, the same project.
+      # It only runs here, because it is the only place the credentials exist.
+      # Everywhere else the spec skips itself and says so.
+      # ---------------------------------------------------------------------
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Build against the hosted project
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Prove the signed-in journey in a browser
+        run: npx playwright test e2e/trip-onboarding.spec.ts
+        env:
+          HOSTED_PROBE_EMAIL_DOMAIN: ${{ secrets.HOSTED_PROBE_EMAIL_DOMAIN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # A skip here would otherwise look like a pass. The journey spec skips
+      # itself when the project is unconfigured, so this asserts it actually
+      # ran — the difference between a certified engine and an unproven one.
+      - name: Fail if the journey was skipped rather than run
+        run: |
+          if [ ! -f e2e-results.json ]; then
+            echo "::error::No Playwright JSON report was written."
+            exit 1
+          fi
+          skipped=$(node -e "
+            const r = require('./e2e-results.json');
+            const walk = (s) => s.flatMap(x => [...(x.specs ?? []), ...walk(x.suites ?? [])]);
+            const specs = walk(r.suites ?? []);
+            const states = specs.flatMap(s => s.tests ?? []).map(t => t.status);
+            console.log(states.filter(x => x === 'skipped').length);
+          ")
+          if [ "$skipped" != "0" ]; then
+            echo "::error::$skipped journey test(s) skipped. The signed-in path is NOT proven."
+            exit 1
+          fi
+          echo "The signed-in journey ran for real."
+
+      - name: Upload the browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-journey-report
+          path: |
+            e2e-results.json
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Summary
         if: always()
         run: |
