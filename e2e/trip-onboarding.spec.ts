@@ -142,19 +142,30 @@ test.describe("trip onboarding, signed in", () => {
     await expect(fact("Departure")).not.toHaveText("Not set");
 
     // --- travellers ---------------------------------------------------------
-    await expect(page.getByText(/no travellers added yet/i)).toBeVisible();
+    const travellersEmpty = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Travellers$/ }),
+    });
+    await expect(
+      travellersEmpty.getByText(/no travellers added yet/i),
+    ).toBeVisible();
 
     await page.getByLabel("Full name").fill("Ama Mensah");
     await page.getByLabel("Relationship").fill("Mother");
     await page.getByLabel("Last four of passport").fill("8f2c");
     await page.getByRole("button", { name: /add traveller/i }).click();
 
-    // Scoped to the list entry, not searched for across the page. A bare
-    // getByText("Ama Mensah") matches twice — once in the entry and once in the
-    // remove button's sr-only label, which exists so that button is announced
-    // as "Remove Ama Mensah" rather than a row of identical "Remove"s. The
-    // duplicate is correct markup; the locator was what needed to be precise.
-    const traveller = page
+    // Scoped to the travellers section, not to the page.
+    //
+    // Twice now a locator here has been widened by content arriving elsewhere:
+    // first getByText matched the remove button's sr-only label as well as the
+    // list entry, then Iteration 4's readiness panel added its own <li> saying
+    // "Passport recorded for Ama Mensah" and a page-wide listitem filter
+    // matched both lists. Both times the markup was right and the locator was
+    // not. Anchoring to the section stops the next iteration doing it again.
+    const travellersSection = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Travellers$/ }),
+    });
+    const traveller = travellersSection
       .getByRole("listitem")
       .filter({ hasText: "Ama Mensah" });
 
@@ -247,7 +258,9 @@ test.describe("trip onboarding, signed in", () => {
     await page.getByRole("button", { name: /remove ama mensah/i }).click();
     await expect(traveller).toHaveCount(0);
     await page.reload();
-    await expect(page.getByText(/no travellers added yet/i)).toBeVisible();
+    await expect(
+      travellersSection.getByText(/no travellers added yet/i),
+    ).toBeVisible();
   });
 
   test("keeps one user's trip out of another user's session", async ({
