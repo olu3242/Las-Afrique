@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { databaseUrl, repoMigrationVersions, sslConfig } from "./connection";
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
+import {
+  expectProfileTrigger,
+  expectTenantConsistentTripKeys,
+} from "../support/schema-queries";
 
 /**
  * Proves the hosted project's actual state — not that a migration command
@@ -94,31 +98,9 @@ describe("hosted schema", () => {
   });
 
   it("provisions a profile from the auth trigger", async () => {
-    // 0004 installs a trigger on auth.users. Its presence on the hosted
-    // project is what makes the profile step of the Iteration 2 path real —
-    // a local test cannot show that it survived the push.
-    const { rows } = await db.query<{ tgname: string; tgenabled: string }>(
-      `select tgname, tgenabled from pg_trigger
-       where tgrelid = 'auth.users'::regclass and not tgisinternal`,
-    );
-    const trigger = rows.find((r) => r.tgname === "on_auth_user_created");
-    expect(trigger, "on_auth_user_created should exist on auth.users").toBeDefined();
-    // 'D' means disabled. A trigger that exists but does not fire is worse
-    // than one that is missing, because it looks present.
-    expect(trigger?.tgenabled).not.toBe("D");
-  });
-
-  it("pins the profile trigger function to an empty search_path", async () => {
-    // It is security definer, so an unpinned search_path would let a schema
-    // the caller controls decide what `profiles` resolves to.
-    const { rows } = await db.query<{ prosecdef: boolean; proconfig: string[] | null }>(
-      `select prosecdef, proconfig from pg_proc
-       where proname = 'handle_new_user'
-         and pronamespace = 'public'::regnamespace`,
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].prosecdef).toBe(true);
-    expect(rows[0].proconfig ?? []).toContain("search_path=");
+    // 0004. Asserted with the shared helper so the identical check runs
+    // locally too — these queries were hosted-only once, and both were wrong.
+    await expectProfileTrigger(db);
   });
 
   it("carries the launch countries with no fabricated requirements", async () => {
@@ -146,29 +128,8 @@ describe("hosted schema", () => {
   });
 
   it("ties every trip child row to the trip's owner", async () => {
-    // 0006. A composite foreign key onto trips (id, user_id) is what stops one
-    // user attaching rows to another user's trip — the insert policy alone
-    // does not, which is how the defect was found.
-    const { rows } = await db.query<{ table_name: string; columns: string[] }>(
-      `select c.conrelid::regclass::text as table_name,
-              array_agg(a.attname order by a.attnum) as columns
-       from pg_constraint c
-       join unnest(c.conkey) as k(attnum) on true
-       join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
-       where c.contype = 'f'
-         and c.confrelid = 'public.trips'::regclass
-       group by c.oid, c.conrelid`,
-    );
-
-    const referencing = ["travelers", "document_records", "cost_estimates",
-                         "savings_plans", "vault_files"];
-    for (const table of referencing) {
-      const constraint = rows.find((r) => r.table_name === `public.${table}`);
-      expect(constraint, `${table} should reference trips`).toBeDefined();
-      expect(constraint?.columns, `${table} must key on user_id too`).toContain(
-        "user_id",
-      );
-    }
+    // 0006.
+    await expectTenantConsistentTripKeys(db);
   });
 
   it("withholds any tenant-table grant from anonymous callers", async () => {

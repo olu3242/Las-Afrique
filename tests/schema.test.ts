@@ -8,6 +8,10 @@ import {
   migrationFiles,
 } from "@/supabase/test/harness";
 import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
+import {
+  expectProfileTrigger,
+  expectTenantConsistentTripKeys,
+} from "./support/schema-queries";
 
 const DB = "tmh_test_schema";
 
@@ -141,6 +145,17 @@ describe("migrations", () => {
       [rows[0].id],
     );
     expect(profile.rows[0].display_name).toBeNull();
+  });
+
+  it("installs the profile trigger as a pinned security-definer function", async () => {
+    // Same assertion the hosted suite runs, against the same real Postgres.
+    // Sharing it is the point: the hosted-only version of this check was
+    // broken and nothing local could have told me.
+    await expectProfileTrigger(db);
+  });
+
+  it("ties every trip child row to the trip's owner", async () => {
+    await expectTenantConsistentTripKeys(db);
   });
 
   it("removes the profile when the auth user is deleted", async () => {
