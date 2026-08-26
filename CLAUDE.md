@@ -9,14 +9,26 @@ disagree, the PRD wins — fix the code, or fix the doc if the PRD justifies it.
 
 ## Current phase
 
-**Phase 0 — landing page and waitlist.** One public route. No authentication, no
-database, no AI, no payments. See the PRD for what Phase 1 adds.
+**Phase 1 — core product, in progress.** The Phase 0 marketing route is complete
+and stays live; Phase 1 is being built behind it in numbered iterations.
 
-Do not start Phase 1 backend work without an explicit decision to move phases.
+| Iteration | Scope | State |
+| --- | --- | --- |
+| 0 | Landing page and waitlist | Complete |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | Current |
+| 2 | Auth and trip onboarding | Not started |
+| 3 | Country intelligence | Not started |
+| 4 | Travel readiness | Not started |
+| 5 | Deterministic budget engine | Not started |
+
+Each iteration ships on its own branch and PR. Do not start an iteration whose
+predecessor has not been certified. Phase 2 scope (group coordination,
+referrals, native apps, post-arrival concierge) stays out entirely.
 
 ## Stack
 
-Next.js (App Router) · React · TypeScript (strict) · Tailwind CSS
+Next.js (App Router) · React · TypeScript (strict) · Tailwind CSS · Supabase
+(Postgres, Auth) · Vitest
 
 npm is the package manager. `package-lock.json` is committed.
 
@@ -98,11 +110,55 @@ Do not hardcode invented legal, immigration or medical facts to fill a card. For
 Phase 0, safe framing is: "Country guide", "Requirements available", "Last
 checked", "Verify before travel". State that a guide exists — not what it says.
 
-## Component conventions
+## Route and component conventions
+
+Two route groups share one root layout:
+
+- `app/(marketing)/` — the public site. No authentication, renders statically.
+- `app/(app)/` — authenticated product routes. Gated in middleware; rendered per
+  request.
+
+Route groups do not appear in URLs, so `app/(marketing)/page.tsx` is `/` and
+`app/(app)/dashboard/page.tsx` is `/dashboard`.
 
 - `components/ui/` — reusable presentation primitives
 - `components/sections/` — page sections, composed of primitives
-- `app/page.tsx` — route-level composition only: a named list of sections, no layout logic
+- Route files — composition only: a named list of sections, no layout logic
+
+## Data access rules
+
+Three Supabase entry points, and picking the wrong one is a security bug:
+
+| Module | Key | Use |
+| --- | --- | --- |
+| `lib/supabase/client.ts` | anon | Browser. Inside RLS. |
+| `lib/supabase/server.ts` | anon + session | Server components and actions. Inside RLS, acting as the signed-in user. |
+| `lib/supabase/admin.ts` | service role | **Bypasses RLS.** Only where genuinely required. |
+
+Default to `server.ts`. Reach for `admin.ts` only when a privileged operation is
+unavoidable — never to work around a policy you could write instead. Both
+server modules import `server-only`, so pulling either into a client component
+fails the build rather than leaking a key.
+
+Never prefix a secret with `NEXT_PUBLIC_`. That prefix inlines the value into
+the client bundle. `tests/bundle-safety.test.ts` enforces this.
+
+## Database conventions
+
+Migrations live in `supabase/migrations/`, applied in lexical order, and are
+append-only — never edit a migration that has been applied anywhere real.
+
+Every tenant-scoped table carries `user_id` referencing `auth.users`, with RLS
+`enable`d **and** `force`d, and a policy for all four verbs comparing
+`user_id = auth.uid()`. `with check` is always specified alongside `using`, so a
+row cannot be inserted into, or re-assigned to, another user's ownership.
+
+New tenant table means: add it to `TENANT_TABLES` in `lib/supabase/types.ts`.
+The schema tests iterate that list, so a table added without policies fails.
+
+Tests run against a real PostgreSQL cluster with the real policy predicates
+(`npm run db:start && npm test`). Do not mock the database in RLS tests — a
+mocked policy tests the mock, not the boundary.
 
 Extract a component when it establishes a pattern Phase 1 will reuse. Do not
 build a design system ahead of need, and do not abstract one-off components.
@@ -143,7 +199,8 @@ medical advice.
 
 ```bash
 npm run lint
-npx tsc --noEmit
+npm run typecheck
+npm run db:start && npm test
 npm run build
 ```
 

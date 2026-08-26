@@ -7,11 +7,22 @@ documents need, what the trip will cost, what to save each month, and how many
 days are left. It calls that **Homecoming Readiness** — a single figure that
 answers where you're going, when, what to do next, and how ready you are.
 
-## Status: Phase 0 — landing page and waitlist
+## Status: Phase 1 in progress — platform foundation
 
-This repository currently contains **one public marketing route**. There is no
-authentication, no database, no AI and no payment processing. Those arrive in
-Phase 1.
+The Phase 0 marketing route is complete and stays live at `/`. Phase 1 is being
+built behind it in numbered iterations, one branch and PR each:
+
+| Iteration | Scope | State |
+| --- | --- | --- |
+| 0 | Landing page and waitlist | Complete |
+| 1 | Platform foundation — route separation, Supabase, schema, RLS | Current |
+| 2 | Auth and trip onboarding | Not started |
+| 3 | Country intelligence | Not started |
+| 4 | Travel readiness | Not started |
+| 5 | Deterministic budget engine | Not started |
+
+There is still no working authentication, no AI and no payment processing. The
+`/dashboard` route exists and is gated, but has nothing behind it yet.
 
 What the landing page does today:
 
@@ -34,10 +45,38 @@ Requires Node.js 18.18 or newer.
 
 ```bash
 npm install
+cp .env.example .env.local   # optional — the marketing route runs without it
 npm run dev
 ```
 
 The site runs at http://localhost:3000.
+
+### Environment
+
+`.env.example` documents the full contract. The split matters:
+
+- `NEXT_PUBLIC_*` values are **inlined into the client bundle**. The Supabase
+  anon key belongs there — it is protected by row-level security, not secrecy.
+- `SUPABASE_SERVICE_ROLE_KEY` **bypasses row-level security** and must never
+  reach the browser. Only `lib/supabase/admin.ts` reads it, and that module
+  imports `server-only` so misuse fails the build.
+
+The marketing route builds and runs with no configuration at all. Protected
+routes fail closed when Supabase is unconfigured.
+
+### Database and tests
+
+The test suite runs against a real PostgreSQL cluster, because row-level
+security policies can only be verified by executing them:
+
+```bash
+npm run db:start   # throwaway local cluster on port 55432
+npm test
+npm run db:stop
+```
+
+Already have a Postgres you manage? Point `TEST_DATABASE_URL` at it and skip
+`db:start`.
 
 ### Scripts
 
@@ -48,8 +87,8 @@ The site runs at http://localhost:3000.
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint via `next lint` |
 | `npm run typecheck` | `tsc --noEmit` |
-
-No environment variables are required for Phase 0.
+| `npm test` | Vitest — schema, RLS and bundle-safety suites |
+| `npm run db:start` / `db:stop` | Local Postgres for the database tests |
 
 ## Stack
 
@@ -64,23 +103,43 @@ through `next/font`.
 
 ```
 app/
-  layout.tsx      Fonts, metadata, document shell
-  page.tsx        Route composition — an ordered list of sections
-  globals.css     Base layer, brand utilities, reduced-motion rules
-  icon.svg        Favicon
+  layout.tsx        Fonts, metadata, document shell
+  globals.css       Base layer, brand utilities, reduced-motion rules
+  icon.svg          Favicon
+  (marketing)/      Public site — static
+    page.tsx        Landing page composition
+  (app)/            Authenticated product — gated in middleware
+    layout.tsx      Signed-in shell
+    dashboard/      Placeholder dashboard
+
+middleware.ts       Session refresh and protected-route gate
 
 components/
-  ui/             Reusable primitives (badge, meter, route motif, breakdown…)
-  sections/       Page sections composed from those primitives
+  ui/               Reusable primitives (badge, meter, route motif, breakdown…)
+  sections/         Page sections composed from those primitives
 
 lib/
-  readiness.ts    Readiness state vocabulary and journey stages
-  mock-data.ts    Illustrative Phase 0 data — replaced by real sources in Phase 1
-  format.ts       Currency formatting
+  env.ts            Environment contract; public vs server-only split
+  readiness.ts      Readiness state vocabulary and journey stages
+  mock-data.ts      Illustrative Phase 0 data — replaced by real sources later
+  format.ts         Currency formatting
+  supabase/
+    client.ts       Browser client (anon key, inside RLS)
+    server.ts       Server client (session-scoped, inside RLS)
+    admin.ts        Service-role client (bypasses RLS — server only)
+    middleware.ts   Session refresh and route gating
+    types.ts        Database types, kept in step with migrations by tests
+
+supabase/
+  migrations/       Applied in lexical order; append-only
+  test/             Local auth shim and database test harness
+
+tests/              Vitest suites — schema, RLS, bundle safety
+scripts/test-db.sh  Throwaway Postgres cluster for the test suite
 
 docs/
-  PRD.md          Product requirements — the product authority
-CLAUDE.md         Engineering and design conventions
+  PRD.md            Product requirements — the product authority
+CLAUDE.md           Engineering and design conventions
 ```
 
 ## Documentation
@@ -99,3 +158,7 @@ interface is designed to make that separation visible.
 
 **Accessibility is a requirement, not a pass.** WCAG 2.1 AA, mobile-first,
 reduced motion respected, and no state ever conveyed by colour alone.
+
+**Row-level security is the authorisation boundary.** Every tenant table denies
+by default and is verified against a real Postgres in the test suite. Server
+code runs *as the signed-in user*, not above them.
