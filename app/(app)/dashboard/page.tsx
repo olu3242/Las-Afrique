@@ -168,7 +168,8 @@ export default async function DashboardPage() {
       )}
 
       <p className="mt-14 border-t border-ivory/10 pt-6 text-sm leading-relaxed text-muted">
-        Readiness and budget appear here once those engines are built.
+        Core platform setup is complete. Additional capabilities will become
+        available as implementation progresses.
       </p>
     </div>
   );
