@@ -1,10 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { databaseUrl, repoMigrationVersions, sslConfig } from "./connection";
-import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
+import {
+  GROUP_ROOT_TABLE,
+  GROUP_TABLES,
+  REFERENCE_TABLES,
+  TENANT_TABLES,
+} from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
   expectCountryProvenanceConstraints,
+  expectGroupHelperFunctions,
+  expectGroupTableInvariants,
+  expectNoCustodyColumns,
   expectTenantConsistentTripKeys,
 } from "../support/schema-queries";
 
@@ -49,7 +57,12 @@ describe("hosted schema", () => {
        order by table_name`,
     );
     const actual = rows.map((r) => r.table_name).sort();
-    const expected = [...TENANT_TABLES, ...REFERENCE_TABLES].sort();
+    const expected = [
+      ...TENANT_TABLES,
+      ...REFERENCE_TABLES,
+      ...GROUP_TABLES,
+      GROUP_ROOT_TABLE,
+    ].sort();
     expect(actual).toEqual(expected);
   });
 
@@ -87,6 +100,42 @@ describe("hosted schema", () => {
         "SELECT",
         "UPDATE",
       ]);
+    }
+  });
+
+  // --- group coordination (Iteration 11) ---------------------------------
+  //
+  // The same shared helpers the local tier runs. There they prove migration
+  // 0011 is correct; here they prove the project actually has it. Adding the
+  // group tables to the local suite alone is what turned hosted run 29 red —
+  // exactly the drift these shared helpers exist to stop, so the fix is to use
+  // them rather than to restate the queries.
+
+  it("scopes every group table by membership, with all four verbs covered", async () => {
+    await expectGroupTableInvariants(db, GROUP_TABLES);
+  });
+
+  it("makes the membership helpers security definer with a pinned search_path", async () => {
+    await expectGroupHelperFunctions(db);
+  });
+
+  it("keeps custody of money out of the group schema", async () => {
+    await expectNoCustodyColumns(db, [...GROUP_TABLES, GROUP_ROOT_TABLE]);
+  });
+
+  it("leaves the owner-scoped tables untouched by group policies", async () => {
+    const { rows } = await db.query<{ tablename: string; qual: string | null }>(
+      `select tablename, qual from pg_policies
+        where schemaname = 'public'
+          and tablename in ('trips', 'travelers', 'document_records',
+                            'cost_estimates', 'savings_plans', 'vault_files')`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        row.qual ?? "",
+        `${row.tablename} policy must not consult group membership`,
+      ).not.toMatch(/is_group_member|can_coordinate|group_/i);
     }
   });
 

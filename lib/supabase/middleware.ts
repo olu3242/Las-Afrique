@@ -13,6 +13,11 @@ export const PROTECTED_PREFIXES = [
   // out" and assumes a user. A public country guide is a marketing-site
   // surface with its own design, not this one wearing the wrong header.
   "/countries",
+  // Group coordination, invitation links included. An invitation must not be
+  // acceptable without a session — the membership it creates belongs to a
+  // specific user, so the gate sends the invitee to sign in and `next` brings
+  // them back to the same link afterwards.
+  "/groups",
 ] as const;
 
 export function isProtectedPath(pathname: string): boolean {

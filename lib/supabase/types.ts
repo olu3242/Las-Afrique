@@ -46,6 +46,28 @@ export type AccommodationTier =
   | "midrange"
   | "premium";
 
+/** The only member state a group ever sees. Never the underlying record. */
+export type MemberCoordinationState =
+  | "ready"
+  | "action_required"
+  | "blocked"
+  | "optional"
+  | "complete";
+
+export type GroupRole = "owner" | "coordinator" | "member";
+
+export type GroupMemberState = "active" | "left" | "removed";
+
+export type GroupInvitationState =
+  | "pending"
+  | "accepted"
+  | "revoked"
+  | "expired";
+
+export type GroupTaskState = "open" | "blocked" | "done";
+
+export type GroupParticipationState = "in" | "out" | "undecided";
+
 export type VerificationState = "unverified" | "verified" | "stale";
 
 export type ReminderChannel = "email" | "push" | "in_app";
@@ -281,4 +303,146 @@ export const TENANT_TABLES = [
 export const REFERENCE_TABLES = [
   "country_profiles",
   "cost_assumptions",
+] as const;
+
+// ---------------------------------------------------------------------------
+// Group coordination (Iteration 11)
+//
+// These tables are tenant data, but not under the single-owner rule the tables
+// above follow. Their access model is membership: a row is readable by anyone
+// with an active membership in its group, and writable according to that
+// member's role. That is a different invariant, so it is asserted separately
+// rather than by widening TENANT_TABLES — see GROUP_TABLES below.
+// ---------------------------------------------------------------------------
+
+export interface TravelGroupRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  destination_country_key: string | null;
+  depart_on: string | null;
+  return_on: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupMembershipRow {
+  id: string;
+  group_id: string;
+  user_id: string;
+  role: GroupRole;
+  state: GroupMemberState;
+  /** MEMBER_SHARED_WITH_GROUP. Written by the member, read by the group. */
+  display_name: string | null;
+  arrival_on: string | null;
+  departure_on: string | null;
+  /** Governs SYSTEM_DERIVED_GROUP_STATUS. False until the member opts in. */
+  shares_readiness: boolean;
+  /**
+   * SYSTEM_DERIVED_GROUP_STATUS. One coarse word the member derived from their
+   * own records; null when nothing is published. Cleared on opt-out.
+   */
+  coordination_state: MemberCoordinationState | null;
+  joined_at: string;
+  updated_at: string;
+}
+
+export interface GroupInvitationRow {
+  id: string;
+  group_id: string;
+  email: string;
+  role: GroupRole;
+  /** Hashed. The plaintext token exists only in the invitation link. */
+  token_hash: string;
+  state: GroupInvitationState;
+  invited_by: string;
+  accepted_by: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupTripRow {
+  id: string;
+  group_id: string;
+  trip_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface GroupTaskRow {
+  id: string;
+  group_id: string;
+  title: string;
+  detail: string | null;
+  due_on: string | null;
+  state: GroupTaskState;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupTaskAssignmentRow {
+  id: string;
+  group_id: string;
+  task_id: string;
+  assignee_id: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface GroupActivityRow {
+  id: string;
+  group_id: string;
+  title: string;
+  detail: string | null;
+  happens_on: string | null;
+  location: string | null;
+  /** Coordination only. Nothing here is held, transferred or settled. */
+  estimated_cost: string | null;
+  cost_currency: string | null;
+  booking_owner_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupActivityParticipationRow {
+  id: string;
+  group_id: string;
+  activity_id: string;
+  user_id: string;
+  state: GroupParticipationState;
+  updated_at: string;
+}
+
+export interface GroupDependencyRow {
+  id: string;
+  group_id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  created_at: string;
+}
+
+/**
+ * The group root. Scoped by `owner_id` for write and by membership for read,
+ * so it carries no `group_id` of its own — its `id` is the group id.
+ */
+export const GROUP_ROOT_TABLE = "travel_groups" as const;
+
+/**
+ * Group-scoped tables. Every one carries `group_id`, enables and forces RLS,
+ * and covers all four verbs — but unlike a tenant table it may carry more than
+ * one policy per verb, because read is membership-scoped while write is
+ * role-scoped. The schema tests iterate this list and assert exactly that.
+ */
+export const GROUP_TABLES = [
+  "group_memberships",
+  "group_invitations",
+  "group_trips",
+  "group_tasks",
+  "group_task_assignments",
+  "group_activities",
+  "group_activity_participation",
+  "group_dependencies",
 ] as const;

@@ -33,10 +33,22 @@ standing in for a dependency that does not exist is exactly the case it names.
 | 8 | Document vault | **PASS** |
 | 9 | Reminders | **PASS** |
 | 10 | Golden path | **PASS** |
+| 11 | Group coordination (Phase 2) | **PASS** |
 
-Each iteration ships on its own branch and PR. Phase 2 scope (group
-coordination, referrals, native apps, post-arrival concierge) stays out
-entirely.
+Each iteration ships on its own branch and PR.
+
+**Phase 2 has begun.** Group coordination is its first engine, Iteration 11.
+The rest of Phase 2 — referrals, native apps, post-arrival concierge — stays
+out until scoped.
+
+The rule group coordination establishes, and which every later Phase 2 engine
+inherits: **membership never widens a tenant policy.** Group access lives in
+group-owned tables with their own membership-scoped policies. `trips`,
+`travelers`, `document_records`, `cost_estimates`, `savings_plans` and
+`vault_files` remain owner-only, and a group's own owner has no read into any
+of them. What crosses the boundary is one coarse word a member chose to
+publish, and `tests/group-rls.test.ts` executes that claim rather than
+asserting it.
 
 **An iteration is an engine, not a feature slice.** Compiling code, passing
 isolated tests and existing UI do not make an iteration complete — the full path
