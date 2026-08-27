@@ -38,7 +38,7 @@ into a working product.
 | 6 | AI planner | request → TripDraft → validation → country/readiness/budget tools → structured plan → persist → UI |
 | 7 | Dashboard | trip → country → readiness → budget → documents → timeline → dashboard |
 | 8 | Vault | user → validation → authorized upload → storage → metadata → association → view/download → delete → reconciliation |
-| 9 | Reminders | **PASS** | Certified — run [33023307266](https://github.com/olu3242/Las-Afrique/actions/runs/33023307266) on `4f8eb8d`. Scheduling fires on the mutations that change a deadline, and the journey now proves a reminder is actually written rather than asserting the empty state it used to agree with. Deadlines come from the readiness engine; idempotency is a unique constraint on a deadline-derived key |
+| 9 | Reminders | deadline → derivation → scheduled job → idempotency → send abstraction → audit → retry/reschedule |
 | 10 | Golden path | the complete MVP path, plus the adversarial cross-user path |
 
 ## Cross-engine rule
