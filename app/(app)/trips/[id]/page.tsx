@@ -221,9 +221,8 @@ export default async function TripDetailPage({
       ) : null}
 
       <p className="mt-14 border-t border-ivory/10 pt-6 text-sm leading-relaxed text-muted">
-        Document readiness and your budget appear here once those engines are
-        built. Take Me Home surfaces requirements and is not the authority on
-        them — verify against the official source before you travel.
+        Take Me Home surfaces requirements and is not the authority on them —
+        verify against the official source before you travel.
       </p>
     </div>
   );
