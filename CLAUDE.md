@@ -33,7 +33,7 @@ standing in for a dependency that does not exist is exactly the case it names.
 | 8 | Document vault | **PASS** |
 | 9 | Reminders | **PASS** |
 | 10 | Golden path | **PASS** |
-| 11 | Group coordination (Phase 2) | **ENGINE_PARTIAL** — awaiting hosted run |
+| 11 | Group coordination (Phase 2) | **PASS** |
 
 Each iteration ships on its own branch and PR.
 

@@ -25,7 +25,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 8 | Document vault | PASS |
 | 9 | Reminders | PASS |
 | 10 | Golden path | PASS |
-| 11 | Group coordination (Phase 2) | ENGINE_PARTIAL — awaiting hosted run |
+| 11 | Group coordination (Phase 2) | PASS |
 
 An iteration counts as done only when its whole path works end to end and
 consumes the real engine before it — see
