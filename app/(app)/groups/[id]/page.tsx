@@ -9,6 +9,7 @@ import { MemberList } from "./member-list";
 import { TaskBoard } from "./task-board";
 import { ActivityBoard } from "./activity-board";
 import { OwnMembershipForm } from "./own-membership-form";
+import { LinkTripForm } from "./link-trip-form";
 import { InviteForm } from "./invite-form";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +47,19 @@ export default async function GroupPage({
   // nothing for either, and they should be indistinguishable from outside.
   if (!detail) notFound();
 
-  const { group, role, members, tasks, assignments, activities, participation, readiness, self } =
-    detail;
+  const {
+    group,
+    role,
+    members,
+    tasks,
+    assignments,
+    activities,
+    participation,
+    readiness,
+    self,
+    ownTrips,
+    linkedTripId,
+  } = detail;
 
   const facts: Array<{ term: string; value: string }> = [
     { term: "Departure", value: formatDate(group.depart_on) ?? "Not set" },
@@ -157,7 +169,17 @@ export default async function GroupPage({
           <h2 id="own-membership" className="font-display text-xl text-ivory">
             Your part in this
           </h2>
-          <div className="mt-5">
+          <div className="mt-5 flex flex-col gap-6">
+            {/*
+              Linking comes first: the readiness a member can share is derived
+              from their own trip, so the switch below has nothing to publish
+              until a trip is linked.
+            */}
+            <LinkTripForm
+              groupId={group.id}
+              trips={ownTrips}
+              linkedTripId={linkedTripId}
+            />
             <OwnMembershipForm groupId={group.id} membership={self} />
           </div>
         </section>

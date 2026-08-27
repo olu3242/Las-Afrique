@@ -61,6 +61,15 @@ test.describe("group coordination, signed in", () => {
     const owner = await newUser();
     await signIn(page, owner);
 
+    // A real trip first. The readiness a member can share is derived from
+    // their own trip, so without one there is nothing to publish — the first
+    // hosted run proved that by reporting "nothing to report yet" and failing.
+    await page.goto("/trips/new");
+    await page.getByLabel("Destination country").selectOption({ label: "Nigeria" });
+    await page.getByLabel("Destination city").fill("Lagos");
+    await page.getByRole("button", { name: /save trip/i }).click();
+    await expect(page).toHaveURL(/\/trips\/[0-9a-f-]{36}$/);
+
     // --- creating the group -------------------------------------------------
     await page.goto("/groups");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
@@ -148,6 +157,14 @@ test.describe("group coordination, signed in", () => {
     const own = page.locator("section", {
       has: page.getByRole("heading", { name: /your part in this/i }),
     });
+
+    // Linking is the step that makes a shared state possible at all. It was
+    // missing from the UI entirely — the action existed with nothing to reach
+    // it — and the hosted browser run is what found that.
+    await own.getByLabel(/which trip/i).selectOption({ label: "Lagos" });
+    await own.getByRole("button", { name: /link trip/i }).click();
+    await expect(own).toContainText(/linked:/i);
+
     await own.getByLabel(/what the group calls you/i).fill("Ama");
     // Arriving a day after the group is a normal case, not an exception.
     await own.getByLabel(/you arrive/i).fill("2026-12-19");
@@ -162,6 +179,13 @@ test.describe("group coordination, signed in", () => {
     // than leaving the denominator to be inferred.
     await expect(readiness).toContainText(/sharing their readiness/i);
     await expect(readiness).not.toContainText(/nobody has chosen to share/i);
+    // A real state was derived and published, not merely an empty state
+    // cleared. "Nothing to report yet" would satisfy the two assertions above
+    // in spirit while proving the derivation never ran.
+    await expect(readiness).not.toContainText(/nothing to report yet/i);
+    await expect(
+      readiness.getByRole("list", { name: /shared readiness/i }).getByRole("listitem"),
+    ).toHaveCount(1);
 
     // --- withdrawing consent removes what was shared ------------------------
     await own.getByLabel(/share my readiness/i).uncheck();

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTripReadiness } from "@/lib/readiness/service";
+import { listTrips, type TripListItem } from "@/lib/trips/service";
 import type {
   GroupActivityParticipationRow,
   GroupActivityRow,
@@ -58,6 +59,13 @@ export interface GroupDetail {
   readiness: GroupReadiness;
   /** The caller's own membership, for the controls that act on themselves. */
   self: GroupMembershipRow | null;
+  /**
+   * The caller's own trips, so they can link one. Their own — RLS returns
+   * nobody else's, and this never becomes a list of anyone else's journeys.
+   */
+  ownTrips: TripListItem[];
+  /** Which of them is linked to this group, if any. */
+  linkedTripId: string | null;
 }
 
 /** Groups the caller belongs to. RLS scopes it; no predicate is written here. */
@@ -152,6 +160,13 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
 
   const self = memberRows.find((m) => m.user_id === user?.id) ?? null;
 
+  // The caller's own trips, for the link control. listTrips reads through the
+  // same server client, so RLS scopes it to them and it cannot become a list
+  // of anyone else's journeys.
+  const ownTrips = self ? await listTrips() : [];
+  const linkedTripId =
+    tripRows.find((t) => t.user_id === user?.id)?.trip_id ?? null;
+
   // Coordination state comes off the membership row, which the member set for
   // themselves. Nothing here reads anyone else's trip — it could not, and the
   // group-rls suite proves it could not.
@@ -195,6 +210,8 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     participation: (participation ?? []) as GroupActivityParticipationRow[],
     readiness,
     self,
+    ownTrips,
+    linkedTripId,
   };
 }
 
