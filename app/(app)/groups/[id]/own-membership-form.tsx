@@ -86,6 +86,37 @@ export function OwnMembershipForm({
         </Field>
       </div>
 
+      {/*
+        What the group currently sees about you.
+        
+        A member could set a sharing switch and had no way to see its effect —
+        they were asked to consent to a disclosure whose content was invisible
+        to them, which is a poor thing to ask. Now the exact word the group
+        reads is shown back, including when there is not one yet.
+      */}
+      <p
+        className="rounded-xl border border-ivory/15 bg-indigo-800/30 px-4 py-3 text-sm leading-relaxed text-muted"
+        data-testid="own-published-state"
+      >
+        {membership.shares_readiness ? (
+          membership.coordination_state ? (
+            <>
+              The group sees:{" "}
+              <span className="text-data text-ivory">
+                {membership.coordination_state.replace(/_/g, " ")}
+              </span>
+            </>
+          ) : (
+            <>
+              The group sees nothing yet. Link a trip that has a traveller on
+              it, and your readiness becomes something we can summarise.
+            </>
+          )
+        ) : (
+          <>You are sharing nothing with this group.</>
+        )}
+      </p>
+
       <div className="flex items-start gap-3 rounded-xl border border-ivory/15 bg-indigo-800/30 px-4 py-3.5">
         <input
           id="sharesReadiness"

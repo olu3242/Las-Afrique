@@ -217,6 +217,18 @@ test.describe("group coordination, signed in", () => {
     await expect(members).toContainText("Ama");
     await expect(members).toContainText(/arrives 19 Dec/i);
 
+    // What this member publishes, asserted where it is written rather than
+    // only where it is aggregated.
+    //
+    // Five runs could say only that the group panel showed no state — which is
+    // true whether the derivation returned null, the write dropped it, or the
+    // aggregation lost it. This separates those: it reads the member's own row
+    // straight back. If it says "nothing yet" the derivation is at fault; if it
+    // names a state while the panel disagrees, the aggregation is.
+    const published = own.getByTestId("own-published-state");
+    await expect(published).toContainText(/the group sees:/i);
+    await expect(published).toContainText(/ready/i);
+
     // The aggregate now has one sharing member, and says so in words rather
     // than leaving the denominator to be inferred.
     await expect(readiness).toContainText(/sharing their readiness/i);
