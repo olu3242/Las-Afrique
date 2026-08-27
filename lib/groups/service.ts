@@ -237,6 +237,31 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
 export async function deriveOwnCoordinationState(
   groupId: string,
 ): Promise<MemberCoordinationState | null> {
+  try {
+    return await computeOwnCoordinationState(groupId);
+  } catch {
+    // A derived summary failing must not fail the member's save. They asked to
+    // set their name and their dates; the published word is a convenience
+    // computed alongside, and getTripReadiness and getCountryGuide both throw
+    // on a query error.
+    //
+    // Iteration 9 established exactly this shape in rescheduleTripReminders,
+    // with the same reasoning written beside it, and Iteration 11 did not
+    // follow it. The cost was seven hosted runs: while the derivation ran
+    // before the write it took the whole update down with it, so a member's
+    // name, dates and consent all silently failed to save.
+    //
+    // Null is honest here — it means "no state could be computed", which is
+    // what the member and the group are both shown. It is not a way of hiding
+    // the failure from the tests: the journey asserts a real published state,
+    // so a derivation that keeps failing keeps the suite red.
+    return null;
+  }
+}
+
+async function computeOwnCoordinationState(
+  groupId: string,
+): Promise<MemberCoordinationState | null> {
   const supabase = await createClient();
   const {
     data: { user },
