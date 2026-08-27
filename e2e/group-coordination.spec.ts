@@ -230,17 +230,7 @@ test.describe("group coordination, signed in", () => {
     await own.getByRole("button", { name: /^save$/i }).click();
 
     await page.reload();
-    await expect(members).toContainText("Ama");
-    await expect(members).toContainText(/arrives 19 Dec/i);
 
-    // What this member publishes, asserted where it is written rather than
-    // only where it is aggregated.
-    //
-    // Five runs could say only that the group panel showed no state — which is
-    // true whether the derivation returned null, the write dropped it, or the
-    // aggregation lost it. This separates those: it reads the member's own row
-    // straight back. If it says "nothing yet" the derivation is at fault; if it
-    // names a state while the panel disagrees, the aggregation is.
     // Before asserting on the rendered page, say what the database holds.
     //
     // Every previous failure here reported only that the page lacked
@@ -263,6 +253,17 @@ test.describe("group coordination, signed in", () => {
       '"coordination_state":"ready"',
     );
 
+    await expect(members).toContainText("Ama");
+    await expect(members).toContainText(/arrives 19 Dec/i);
+
+    // What this member publishes, asserted where it is written rather than
+    // only where it is aggregated.
+    //
+    // Five runs could say only that the group panel showed no state — which is
+    // true whether the derivation returned null, the write dropped it, or the
+    // aggregation lost it. This separates those: it reads the member's own row
+    // straight back. If it says "nothing yet" the derivation is at fault; if it
+    // names a state while the panel disagrees, the aggregation is.
     const published = own.getByTestId("own-published-state");
     await expect(published).toContainText(/the group sees:/i);
     await expect(published).toContainText(/ready/i);
