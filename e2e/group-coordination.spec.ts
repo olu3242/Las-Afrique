@@ -229,6 +229,24 @@ test.describe("group coordination, signed in", () => {
     await own.getByLabel(/share my readiness/i).check();
     await own.getByRole("button", { name: /^save$/i }).click();
 
+    // Wait for the action to finish before reloading it out from under itself.
+    //
+    // click() returns once the click is dispatched, not once the server action
+    // it triggers has completed. Reloading immediately renders the page from
+    // before the save — which is exactly what runs 36-40 recorded: the row in
+    // the database was correct ("Ama", shares_readiness true,
+    // coordination_state "ready", all asserted below) while the page still
+    // showed "A traveller" and "Not sharing".
+    //
+    // The database and the page were never disagreeing about state. The test
+    // was reading the page too early and blaming the engine for it.
+    //
+    // Asserting the rendered result first is also the honest order: this line
+    // proves the action completed and revalidated, and the reload below then
+    // proves the row was written rather than the page merely updated — the
+    // same separation the rest of this suite uses.
+    await expect(members).toContainText("Ama");
+
     await page.reload();
 
     // Before asserting on the rendered page, say what the database holds.
