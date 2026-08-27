@@ -40,6 +40,7 @@ into a working product.
 | 8 | Vault | user → validation → authorized upload → storage → metadata → association → view/download → delete → reconciliation |
 | 9 | Reminders | deadline → derivation → scheduled job → idempotency → send abstraction → audit → retry/reschedule |
 | 10 | Golden path | the complete MVP path, plus the adversarial cross-user path |
+| 11 | Group coordination | group → invitation → acceptance → membership → role → shared plan → assignment → member variation → readiness aggregation → departure |
 
 ## Cross-engine rule
 
@@ -132,6 +133,7 @@ An iteration may be declared complete only when
 | 7 | Dashboard | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Composes every preceding engine and computes none of them |
 | 8 | Vault | **PASS** | The metadata half was always certified: `vault_files` through PostgREST, RLS, and ownership by object path. The storage half now is too — run [33024396183](https://github.com/olu3242/Las-Afrique/actions/runs/33024396183) on `66e13e2`. It stores an object under its owner's folder and reads the bytes back, resolves a signed URL with no `Authorization` header at all, and is refused on every crossing — anonymous read, another user's read, another user's *signing*, another user's write into the owner's folder, another user's delete — with the write and delete probes checking `storage.objects` afterwards rather than trusting the status code. The browser journey uploads a real PDF through the shipped form, reloads, follows the signed link to its bytes, and deletes it. Raised in review on #11, where the row said PASS on strictly less evidence than that word implies |
 | 9 | Reminders | **PASS** | Certified — run [33023307266](https://github.com/olu3242/Las-Afrique/actions/runs/33023307266) on `4f8eb8d`. Scheduling fires on the mutations that change a deadline, and the journey now proves a reminder is actually written rather than asserting the empty state it used to agree with. Deadlines come from the readiness engine; idempotency is a unique constraint on a deadline-derived key |
+| 11 | Group coordination | **ENGINE_PARTIAL** | Schema, policies, domain and UI are real and proven locally — 36 database probes against the real predicates, 27 domain tests, a build and a browser suite. Not yet executed against the hosted project, so it is not certified. Phase 2's first engine |
 | 10 | Golden path | **PASS** | Certified — run [33021885473](https://github.com/olu3242/Las-Afrique/actions/runs/33021885473) on `6a1738f`. Complete MVP path, adversarial second signed-in user on every surface, and the signed-out path |
 
 ### Iteration 2 — what was observed

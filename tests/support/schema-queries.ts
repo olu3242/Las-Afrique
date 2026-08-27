@@ -180,3 +180,114 @@ export async function expectVaultStoragePolicies(db: Client): Promise<void> {
     expect(verbs, `no vault storage policy for ${verb}`).toContain(verb);
   }
 }
+
+/**
+ * Group coordination tables (Iteration 11).
+ *
+ * These are asserted separately from TENANT_TABLES because their access model
+ * genuinely differs: read is membership-scoped, write is role-scoped, so a
+ * table legitimately carries more than one policy per verb. The tenant
+ * assertion demands exactly four policies and would have had to be weakened to
+ * accommodate them — weakening a certified assertion to fit new code is how a
+ * boundary quietly stops being one.
+ */
+export async function expectGroupTableInvariants(
+  db: Client,
+  tables: readonly string[],
+): Promise<void> {
+  const { rows: security } = await db.query<{
+    relname: string;
+    relrowsecurity: boolean;
+    relforcerowsecurity: boolean;
+  }>(
+    `select relname, relrowsecurity, relforcerowsecurity
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'r'`,
+  );
+  const byName = new Map(security.map((r) => [r.relname, r]));
+
+  const { rows: policies } = await db.query<{ tablename: string; cmd: string }>(
+    `select tablename, cmd from pg_policies where schemaname = 'public'`,
+  );
+
+  for (const table of tables) {
+    expect(byName.get(table)?.relrowsecurity, `${table} RLS enabled`).toBe(true);
+    expect(byName.get(table)?.relforcerowsecurity, `${table} RLS forced`).toBe(true);
+
+    const verbs = new Set(
+      policies.filter((r) => r.tablename === table).map((r) => r.cmd),
+    );
+    for (const verb of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+      expect(verbs, `${table} needs a ${verb} policy`).toContain(verb);
+    }
+
+    // group_id is the scoping key every group policy predicates on. A table
+    // without it cannot be membership-scoped, whatever its policies say.
+    const { rows } = await db.query(
+      `select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = $1
+          and column_name = 'group_id'`,
+      [table],
+    );
+    expect(rows, `${table}.group_id should exist`).toHaveLength(1);
+  }
+}
+
+/**
+ * The membership helpers must be security definer with a pinned search_path.
+ *
+ * Definer is what breaks the recursion in a membership policy that has to read
+ * memberships. An empty search_path is what stops a schema earlier on the
+ * caller's path from substituting a different table underneath one.
+ */
+export async function expectGroupHelperFunctions(db: Client): Promise<void> {
+  const { rows } = await db.query<{
+    proname: string;
+    prosecdef: boolean;
+    proconfig: string[] | null;
+  }>(
+    `select proname, prosecdef, proconfig from pg_proc
+      where pronamespace = 'public'::regnamespace
+        and proname in ('is_group_member', 'can_coordinate', 'group_role_of',
+                        'guard_membership_shared_columns')`,
+  );
+
+  for (const name of [
+    "is_group_member",
+    "can_coordinate",
+    "group_role_of",
+    "guard_membership_shared_columns",
+  ]) {
+    const fn = rows.find((r) => r.proname === name);
+    expect(fn, `${name} should exist`).toBeDefined();
+    expect(fn?.prosecdef, `${name} must be security definer`).toBe(true);
+    expect(fn?.proconfig ?? [], `${name} must pin search_path`).toContain(
+      'search_path=""',
+    );
+  }
+}
+
+/**
+ * No group table may carry a column that implies custody of money.
+ *
+ * Iteration 11 is coordination only — an estimate and who books it. This is
+ * asserted rather than trusted to review, because the drift it guards against
+ * arrives one innocuous column at a time.
+ */
+export async function expectNoCustodyColumns(
+  db: Client,
+  tables: readonly string[],
+): Promise<void> {
+  const { rows } = await db.query<{ table_name: string; column_name: string }>(
+    `select table_name, column_name from information_schema.columns
+      where table_schema = 'public' and table_name = any($1)`,
+    [[...tables]],
+  );
+
+  const forbidden = /balance|escrow|wallet|payout|settle|transfer|ledger|held_/i;
+  const offenders = rows.filter((r) => forbidden.test(r.column_name));
+  expect(
+    offenders.map((r) => `${r.table_name}.${r.column_name}`),
+    "group tables must not imply custody of funds",
+  ).toEqual([]);
+}

@@ -7,10 +7,18 @@ import {
   dropDatabase,
   migrationFiles,
 } from "@/supabase/test/harness";
-import { REFERENCE_TABLES, TENANT_TABLES } from "@/lib/supabase/types";
+import {
+  GROUP_ROOT_TABLE,
+  GROUP_TABLES,
+  REFERENCE_TABLES,
+  TENANT_TABLES,
+} from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
   expectCountryProvenanceConstraints,
+  expectGroupHelperFunctions,
+  expectGroupTableInvariants,
+  expectNoCustodyColumns,
   expectTenantConsistentTripKeys,
 } from "./support/schema-queries";
 
@@ -42,6 +50,7 @@ describe("migrations", () => {
       "0008_cost_assumptions.sql",
       "0009_vault_storage.sql",
       "0010_reminders.sql",
+      "0011_group_coordination.sql",
     ]);
   });
 
@@ -284,7 +293,12 @@ describe("migrations", () => {
        order by table_name`,
     );
     const actual = rows.map((r) => r.table_name);
-    const expected = [...TENANT_TABLES, ...REFERENCE_TABLES].sort();
+    const expected = [
+      ...TENANT_TABLES,
+      ...REFERENCE_TABLES,
+      ...GROUP_TABLES,
+      GROUP_ROOT_TABLE,
+    ].sort();
     expect(actual.sort()).toEqual(expected);
   });
 
@@ -393,6 +407,53 @@ describe("migrations", () => {
     } finally {
       await withDefaults.end();
       await dropDatabase(name);
+    }
+  });
+
+  // --- group coordination (Iteration 11) ---------------------------------
+
+  it("scopes every group table by membership, with all four verbs covered", async () => {
+    await expectGroupTableInvariants(db, GROUP_TABLES);
+  });
+
+  it("enables and forces row-level security on the group root", async () => {
+    const { rows } = await db.query<{
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+    }>(
+      `select relrowsecurity, relforcerowsecurity from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relname = $1`,
+      [GROUP_ROOT_TABLE],
+    );
+    expect(rows[0]?.relrowsecurity).toBe(true);
+    expect(rows[0]?.relforcerowsecurity).toBe(true);
+  });
+
+  it("makes the membership helpers security definer with a pinned search_path", async () => {
+    await expectGroupHelperFunctions(db);
+  });
+
+  it("keeps custody of money out of the group schema", async () => {
+    await expectNoCustodyColumns(db, [...GROUP_TABLES, GROUP_ROOT_TABLE]);
+  });
+
+  it("leaves the owner-scoped tables untouched by group policies", async () => {
+    // The property the certified adversarial suites rest on. Iteration 11 adds
+    // group access; it must not have added a second way into a private table.
+    const { rows } = await db.query<{ tablename: string; qual: string | null }>(
+      `select tablename, qual from pg_policies
+        where schemaname = 'public'
+          and tablename in ('trips', 'travelers', 'document_records',
+                            'cost_estimates', 'savings_plans', 'vault_files')`,
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        row.qual ?? "",
+        `${row.tablename} policy must not consult group membership`,
+      ).not.toMatch(/is_group_member|can_coordinate|group_/i);
     }
   });
 
