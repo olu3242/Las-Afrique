@@ -110,3 +110,33 @@ export async function deleteProbeUser(
     headers: { apikey: adminKey, Authorization: `Bearer ${adminKey}` },
   });
 }
+
+/**
+ * Reads rows straight out of the project, bypassing RLS.
+ *
+ * A diagnostic, not an assertion helper for ordinary use. Nine hosted runs of
+ * the group journey each reported only that a page did not show something,
+ * which is equally true whether a write failed, a read failed, or the render
+ * did — and four diagnoses drawn from that ambiguity were wrong.
+ *
+ * A journey that can say what the database actually holds ends that guessing.
+ * Use it to put real state into a failure message; never to assert on data the
+ * signed-in user could not see for themselves, which would prove the wrong
+ * thing entirely.
+ */
+export async function readAsAdmin(
+  config: AdminConfig,
+  path: string,
+): Promise<unknown> {
+  const adminKey = await serviceRoleKey(config);
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, {
+    headers: {
+      apikey: adminKey,
+      Authorization: `Bearer ${adminKey}`,
+    },
+  });
+  if (!response.ok) {
+    return { error: response.status, body: await response.text() };
+  }
+  return response.json();
+}

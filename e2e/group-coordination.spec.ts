@@ -3,6 +3,7 @@ import {
   adminConfig,
   createProbeUser,
   deleteProbeUser,
+  readAsAdmin,
   type AdminConfig,
   type ProbeUser,
 } from "./support/supabase-admin";
@@ -240,6 +241,28 @@ test.describe("group coordination, signed in", () => {
     // aggregation lost it. This separates those: it reads the member's own row
     // straight back. If it says "nothing yet" the derivation is at fault; if it
     // names a state while the panel disagrees, the aggregation is.
+    // Before asserting on the rendered page, say what the database holds.
+    //
+    // Every previous failure here reported only that the page lacked
+    // something — equally true whether the write failed, the read failed, or
+    // the render did. Four diagnoses drawn from that ambiguity were wrong.
+    // This puts the row itself in the failure message, so the next one is a
+    // fact rather than a hypothesis.
+    const row = await readAsAdmin(
+      config as AdminConfig,
+      `group_memberships?select=display_name,arrival_on,shares_readiness,` +
+        `coordination_state&user_id=eq.${owner.id}`,
+    );
+    const stored = JSON.stringify(row);
+
+    expect(stored, `membership row after save: ${stored}`).toContain('"Ama"');
+    expect(stored, `membership row after save: ${stored}`).toContain(
+      '"shares_readiness":true',
+    );
+    expect(stored, `membership row after save: ${stored}`).toContain(
+      '"coordination_state":"ready"',
+    );
+
     const published = own.getByTestId("own-published-state");
     await expect(published).toContainText(/the group sees:/i);
     await expect(published).toContainText(/ready/i);
