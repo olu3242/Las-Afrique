@@ -207,6 +207,21 @@ test.describe("group coordination, signed in", () => {
     await own.getByRole("button", { name: /link trip/i }).click();
     await expect(own).toContainText(/linked:/i);
 
+    // A clean load between the two form submissions on this page.
+    //
+    // Linking is a server action, and this codebase already documented what
+    // that does to the *other* form beside it: React 19 resets uncontrolled
+    // form state after an action runs — the reason use-form-values.ts exists
+    // at all. The membership form's inputs are uncontrolled `defaultValue`
+    // ones, so typing into them in the window around that re-render is a race
+    // against it, and losing it submits an empty name with the box unticked.
+    //
+    // Which is exactly what four runs recorded: "A traveller", "Not sharing".
+    // Not a product fault — a real person types after the page has settled —
+    // but a test that was racing the framework and blaming the engine.
+    await page.goto(groupUrl);
+    await expect(own).toContainText(/linked:/i);
+
     await own.getByLabel(/what the group calls you/i).fill("Ama");
     // Arriving a day after the group is a normal case, not an exception.
     await own.getByLabel(/you arrive/i).fill("2026-12-19");
