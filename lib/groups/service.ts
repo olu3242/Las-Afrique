@@ -20,6 +20,7 @@ import {
   coordinationStateFrom,
   deriveGroupReadiness,
   type GroupReadiness,
+  type MemberCoordinationState,
 } from "./readiness";
 
 /**
@@ -216,11 +217,70 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
 }
 
 /**
- * Recomputes the caller's own coordination state and publishes it.
+ * Derives the caller's own coordination state. Reads only; writes nothing.
  *
- * Called on the caller's own request, inside their own policy, over their own
- * trip. It is a no-op when the member has not opted in — an opt-out must not
- * leave a stale word behind for the group to read.
+ * Runs as the caller, inside their own policy, over their own trip — which is
+ * the only way it *can* run, since no other user could read those rows.
+ *
+ * Split from the write on purpose. The first version did both: it re-read the
+ * membership to check consent, then wrote the state. That meant every caller
+ * performed a read-after-write of a flag it had just set itself, and the
+ * derivation silently took the "consent withdrawn" branch whenever that read
+ * came back stale — which is what five hosted runs reported as "1 shared but
+ * has nothing to report yet" while every input to it was correct.
+ *
+ * Now the caller owns the decision it already knows the answer to, and writes
+ * consent and state in one statement. There is no window between them for the
+ * two to disagree, and the CHECK constraint that ties them cannot see an
+ * inconsistent intermediate.
+ */
+export async function deriveOwnCoordinationState(
+  groupId: string,
+): Promise<MemberCoordinationState | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: link } = await supabase
+    .from("group_trips")
+    .select("trip_id")
+    .eq("group_id", groupId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  // No linked trip means nothing to derive from. Null is the honest answer,
+  // and the panel says "nothing to report yet" rather than inventing one.
+  if (!link) return null;
+
+  const { data: trip } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("id", (link as GroupTripRow).trip_id)
+    .maybeSingle();
+
+  if (!trip) return null;
+
+  const { data: travelers } = await supabase
+    .from("travelers")
+    .select("*")
+    .eq("trip_id", (trip as TripRow).id);
+
+  const summary = await getTripReadiness(
+    trip as TripRow,
+    (travelers ?? []) as TravelerRow[],
+  );
+
+  return coordinationStateFrom(summary);
+}
+
+/**
+ * Republishes the caller's state after something changed that it depends on.
+ *
+ * Used where consent is not being changed in the same breath — linking a trip,
+ * for instance. Reading consent here is safe because nothing in this call has
+ * written it.
  */
 export async function refreshOwnCoordinationState(
   groupId: string,
@@ -233,54 +293,22 @@ export async function refreshOwnCoordinationState(
 
   const { data: membership } = await supabase
     .from("group_memberships")
-    .select("*")
+    .select("shares_readiness")
     .eq("group_id", groupId)
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!membership) return;
 
-  if (!(membership as GroupMembershipRow).shares_readiness) {
-    // Clearing on opt-out is the point. Leaving the last published word in
-    // place would keep disclosing after the member withdrew consent.
-    await supabase
-      .from("group_memberships")
-      .update({ coordination_state: null })
-      .eq("group_id", groupId)
-      .eq("user_id", user.id);
-    return;
-  }
+  const shares = (membership as { shares_readiness: boolean }).shares_readiness;
 
-  const { data: link } = await supabase
-    .from("group_trips")
-    .select("trip_id")
-    .eq("group_id", groupId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!link) return;
-
-  const { data: trip } = await supabase
-    .from("trips")
-    .select("*")
-    .eq("id", (link as GroupTripRow).trip_id)
-    .maybeSingle();
-
-  if (!trip) return;
-
-  const { data: travelers } = await supabase
-    .from("travelers")
-    .select("*")
-    .eq("trip_id", (trip as TripRow).id);
-
-  const summary = await getTripReadiness(
-    trip as TripRow,
-    (travelers ?? []) as TravelerRow[],
-  );
+  // Not sharing means clearing, not leaving the last published word in place:
+  // withdrawing consent has to stop the disclosure, not freeze it.
+  const state = shares ? await deriveOwnCoordinationState(groupId) : null;
 
   await supabase
     .from("group_memberships")
-    .update({ coordination_state: coordinationStateFrom(summary) })
+    .update({ coordination_state: state })
     .eq("group_id", groupId)
     .eq("user_id", user.id);
 }

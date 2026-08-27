@@ -6,7 +6,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { field, type ActionState } from "@/lib/forms";
 import { listCountryOptions } from "@/lib/trips/service";
-import { refreshOwnCoordinationState } from "./service";
+import {
+  deriveOwnCoordinationState,
+  refreshOwnCoordinationState,
+} from "./service";
 import {
   validateActivityInput,
   validateGroupInput,
@@ -410,6 +413,21 @@ export async function updateOwnMembership(
 
   const sharesReadiness = form.get("sharesReadiness") === "on";
 
+  // Derived *before* the write, and written with it.
+  //
+  // The first version updated the row and then called a refresh that re-read
+  // the consent flag it had just set. That read-after-write is what five
+  // hosted runs reported as "1 shared but has nothing to report yet": the
+  // refresh saw a stale `false`, took the withdrawal branch, and cleared the
+  // state it was supposed to publish. Nothing about the derivation was wrong.
+  //
+  // Now consent and the word it governs land in one statement, so there is no
+  // window in which they can disagree — and withdrawing consent clears the
+  // published word in that same statement rather than a moment later.
+  const coordinationState = sharesReadiness
+    ? await deriveOwnCoordinationState(groupId)
+    : null;
+
   const { error } = await supabase
     .from("group_memberships")
     .update({
@@ -417,20 +435,13 @@ export async function updateOwnMembership(
       arrival_on: input.arrivalOn,
       departure_on: input.departureOn,
       shares_readiness: sharesReadiness,
-      // Withdrawing consent clears the published word in the same statement.
-      // Doing it in two would leave a window where the group still reads a
-      // status the member has just revoked.
-      ...(sharesReadiness ? {} : { coordination_state: null }),
+      coordination_state: coordinationState,
       updated_at: new Date().toISOString(),
     })
     .eq("group_id", groupId)
     .eq("user_id", user.id);
 
   if (error) return refused("We could not save that. Try again.");
-
-  // Recompute now that sharing may have been turned on. Runs as the member,
-  // over the member's own trip.
-  await refreshOwnCoordinationState(groupId);
 
   revalidatePath(`/groups/${groupId}`);
   return { status: "idle" };
