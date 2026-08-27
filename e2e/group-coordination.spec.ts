@@ -83,7 +83,34 @@ test.describe("group coordination, signed in", () => {
       .slice(0, 10);
     await page.getByLabel("Passport expires").fill(passportExpiry);
     await page.getByRole("button", { name: /add traveller/i }).click();
-    await expect(page.getByText("Ama Mensah").first()).toBeVisible();
+
+    // Scoped to the travellers section and reloaded, not a page-wide getByText.
+    // The loose version passed for three hosted runs while the row it claimed
+    // to prove may never have been written — and the readiness panel on the
+    // same page renders "Passport recorded for Ama Mensah", which a page-wide
+    // match would happily accept. The reload is what separates "the page
+    // updated" from "the row was written", and the row is the thing the whole
+    // derivation downstream depends on.
+    const travellersSection = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Travellers$/ }),
+    });
+    await expect(
+      travellersSection.getByRole("listitem").filter({ hasText: "Ama Mensah" }),
+    ).toHaveCount(1);
+
+    await page.reload();
+    await expect(
+      travellersSection.getByRole("listitem").filter({ hasText: "Ama Mensah" }),
+    ).toHaveCount(1);
+
+    // And the trip's own readiness must have something checkable in it, since
+    // that is precisely what the group state is derived from. A trip whose
+    // readiness is entirely unknowable yields a null state by design, which is
+    // what the group panel kept reporting.
+    const tripReadiness = page.locator("section", {
+      has: page.getByRole("heading", { name: /^Readiness$/ }),
+    });
+    await expect(tripReadiness).toContainText(/Passport recorded for Ama Mensah/i);
 
     // --- creating the group -------------------------------------------------
     await page.goto("/groups");
