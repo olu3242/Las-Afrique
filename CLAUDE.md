@@ -38,8 +38,17 @@ standing in for a dependency that does not exist is exactly the case it names.
 Each iteration ships on its own branch and PR.
 
 **Phase 2 has begun.** Group coordination is its first engine, Iteration 11.
-The rest of Phase 2 — referrals, native apps, post-arrival concierge — stays
-out until scoped.
+Where the rest of Phase 2 stands, after scope discovery for Iterations 12-16:
+
+| Capability | State |
+| --- | --- |
+| Referral | Scope proposed in `docs/ITERATION-12-SCOPE.md`, awaiting approval |
+| Native mobile apps | Out of the engine sequence — a platform roadmap, not an engine |
+| Post-arrival AI concierge | Blocked on the same provider credential as Iteration 6 |
+
+Iterations 15-16 have no capability named anywhere, and are left empty rather
+than filled. The PRD names four Phase 2 capabilities and one is built; a
+five-iteration batch does not create a fifth engine.
 
 The rule group coordination establishes, and which every later Phase 2 engine
 inherits: **membership never widens a tenant policy.** Group access lives in
