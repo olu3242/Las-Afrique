@@ -9,6 +9,7 @@ import {
   storagePathFor,
   validateUpload,
 } from "./service";
+import { rescheduleTripReminders } from "@/lib/reminders/service";
 
 export type VaultField = "file" | "label";
 
@@ -76,6 +77,10 @@ export async function uploadDocument(
     };
   }
 
+  // A document can carry a due date, which is a deadline the reminders engine
+  // derives from. Idempotent, so calling it on every change is safe.
+  if (tripId) await rescheduleTripReminders(tripId);
+
   if (tripId) revalidatePath(`/trips/${tripId}`);
   revalidatePath("/vault");
   return { status: "idle" };
@@ -110,6 +115,10 @@ export async function deleteDocument(form: FormData): Promise<void> {
 
   await supabase.storage.from(VAULT_BUCKET).remove([data.storage_path]);
   await supabase.from("vault_files").delete().eq("id", id);
+
+  // A document can carry a due date, which is a deadline the reminders engine
+  // derives from. Idempotent, so calling it on every change is safe.
+  if (tripId) await rescheduleTripReminders(tripId);
 
   if (tripId) revalidatePath(`/trips/${tripId}`);
   revalidatePath("/vault");

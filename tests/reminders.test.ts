@@ -125,6 +125,33 @@ describe("reminder derivation", () => {
     const next = nextReminder("t", readiness({ items: [item()] }), TODAY);
     expect(next?.dueAt.startsWith("2026-08-02")).toBe(true);
   });
+
+  it("derives reminders for a passport expiring before the trip ends", () => {
+    // The exact scenario the browser journey now sets up, pinned locally so
+    // the derivation half is proven in milliseconds and only the wiring needs
+    // a hosted run. An expiry that covers the trip is `ready`, and ready items
+    // are skipped — which is why a comfortably-valid passport produces nothing
+    // and would leave the journey asserting an empty panel again.
+    const out = deriveReminders(
+      "trip-1",
+      readiness({
+        items: [item({ state: "action_needed", dueOn: "2026-09-09" })],
+      }),
+      TODAY,
+    );
+    expect(out.length).toBe(LEAD_TIMES_IN_DAYS.length);
+    expect(out.every((r) => r.dueAt >= TODAY)).toBe(true);
+  });
+
+  it("derives nothing from a passport that covers the trip", () => {
+    expect(
+      deriveReminders(
+        "trip-1",
+        readiness({ items: [item({ state: "ready", dueOn: "2030-01-01" })] }),
+        TODAY,
+      ),
+    ).toHaveLength(0);
+  });
 });
 
 describe("the send abstraction", () => {

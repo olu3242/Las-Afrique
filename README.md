@@ -22,7 +22,7 @@ built behind it in numbered iterations, one branch and PR each:
 | 5 | Deterministic budget engine | PASS |
 | 6 | AI planner | ENGINE_PARTIAL — no provider configured |
 | 7 | Dashboard | PASS |
-| 8 | Document vault | PASS |
+| 8 | Document vault | ENGINE_PARTIAL — storage path unexercised |
 | 9 | Reminders | PASS |
 | 10 | Golden path | PASS |
 
@@ -30,8 +30,10 @@ An iteration counts as done only when its whole path works end to end and
 consumes the real engine before it — see
 [`docs/ITERATION-STANDARD.md`](docs/ITERATION-STANDARD.md).
 
-There is still no working authentication, no AI and no payment processing. The
-`/dashboard` route exists and is gated, but has nothing behind it yet.
+Authentication works and the authenticated product is behind it: trips,
+travellers, country guides, readiness, budget, documents and reminders. There
+is no payment processing, and the AI planner has no provider configured, so it
+reports itself unavailable rather than answering.
 
 What the landing page does today:
 

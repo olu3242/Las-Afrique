@@ -152,6 +152,18 @@ test.describe("trip onboarding, signed in", () => {
     await page.getByLabel("Full name").fill("Ama Mensah");
     await page.getByLabel("Relationship").fill("Mother");
     await page.getByLabel("Last four of passport").fill("8f2c");
+    // An expiry, so the trip carries a real deadline. Without one there is
+    // nothing for readiness to date or for the reminder scheduler to derive
+    // from, and both engines would be exercised only in their "we do not know"
+    // branch — which is how the reminders panel stayed empty unnoticed.
+    // Before the trip's last day (+120), so the engine reports it as expiring
+    // during the trip rather than as recorded-and-ready. deriveReminders skips
+    // ready items, so an expiry that comfortably covers the trip would produce
+    // no deadline and leave this proving nothing.
+    const passportExpiry = new Date(Date.now() + 100 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await page.getByLabel("Passport expires").fill(passportExpiry);
     await page.getByRole("button", { name: /add traveller/i }).click();
 
     // Scoped to the travellers section, not to the page.
@@ -257,7 +269,15 @@ test.describe("trip onboarding, signed in", () => {
       has: page.getByRole("heading", { name: /^Reminders$/ }),
     });
     await expect(reminders).toBeVisible();
-    await expect(reminders).toContainText(/nothing is scheduled yet/i);
+
+    // Ama was added with a passport expiry, which is a deadline, so the
+    // scheduler should have run on that mutation and stored something.
+    //
+    // This assertion used to accept the empty state. That was the bug: nothing
+    // invoked scheduleTripReminders, so the panel was always empty and the
+    // test passed by agreeing with it. A review caught what the test endorsed.
+    await expect(reminders).not.toContainText(/nothing is scheduled yet/i);
+    await expect(reminders.getByRole("listitem").first()).toBeVisible();
 
     const budget = page.locator("section", {
       has: page.getByRole("heading", { name: /^Budget$/ }),
