@@ -20,6 +20,17 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
+  // 30s is Playwright's default and it is a unit-test default. These journeys
+  // are integration runs over a network: a single one signs in, creates a trip
+  // and a traveller, uploads a document to object storage, follows a signed
+  // URL, deletes it, and walks a country guide — dozens of round trips to a
+  // hosted project. The trip-onboarding journey started timing out at 30s as
+  // it grew, reported once as flaky and then as a failure, which is a bad way
+  // to learn that a budget was too tight rather than that code was wrong.
+  //
+  // Raising it does not weaken anything: a hung test still fails, just later.
+  // The local run is unaffected — those specs skip without credentials.
+  timeout: 90_000,
   // The JSON report is what lets CI tell a skipped journey from a passing one.
   // Without it, a spec that skipped itself for want of credentials would leave
   // a green job behind and read as proof.
