@@ -70,6 +70,21 @@ test.describe("group coordination, signed in", () => {
     await page.getByRole("button", { name: /save trip/i }).click();
     await expect(page).toHaveURL(/\/trips\/[0-9a-f-]{36}$/);
 
+    // A traveller with a passport expiry, and this is load-bearing rather than
+    // set dressing. Iteration 4 counts only ready/action_needed/expiring/
+    // missing towards a percentage; a trip with no travellers yields nothing
+    // checkable, so `percent` is null and coordinationStateFrom returns null
+    // by design. The group then honestly reports "nothing to report yet" —
+    // which is what run 31 did, correctly, while proving the derivation never
+    // produced a state.
+    await page.getByLabel("Full name").fill("Ama Mensah");
+    const passportExpiry = new Date(Date.now() + 900 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await page.getByLabel("Passport expires").fill(passportExpiry);
+    await page.getByRole("button", { name: /add traveller/i }).click();
+    await expect(page.getByText("Ama Mensah").first()).toBeVisible();
+
     // --- creating the group -------------------------------------------------
     await page.goto("/groups");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
