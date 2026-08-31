@@ -297,11 +297,15 @@ export type QualificationOutcome =
 export async function evaluateQualification(): Promise<QualificationOutcome> {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return "invalid";
 
+    // Straight to the RPC. It resolves `auth.uid()` itself and answers
+    // `invalid` without a session, so a `getUser()` first would be a second
+    // round trip to learn what the first one already establishes.
+    //
+    // That matters because this runs inside createTrip, on every trip every
+    // user creates, and most of them have no referral at all. One round trip
+    // to hear `no_referral` is the floor; two was latency added to an
+    // unrelated engine's mutation.
     const { data, error } = await supabase.rpc("evaluate_referral_qualification");
     if (error) return "invalid";
 
@@ -309,8 +313,11 @@ export async function evaluateQualification(): Promise<QualificationOutcome> {
     const outcome = (row?.outcome ?? "invalid") as QualificationOutcome;
 
     if (outcome === "qualified") {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const program = await currentProgram();
-      if (program) {
+      if (program && user) {
         for (const name of [
           "referral.qualified",
           "referral.entitlement_earned",

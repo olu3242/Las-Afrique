@@ -301,6 +301,16 @@ test.describe("group coordination, signed in", () => {
     // --- withdrawing consent removes what was shared ------------------------
     await own.getByLabel(/share my readiness/i).uncheck();
     await own.getByRole("button", { name: /^save$/i }).click();
+
+    // ASSERT POST-ACTION RENDER before reloading. The opt-*in* above was fixed
+    // this way after eleven hosted runs; this opt-*out* kept the original
+    // `click(); reload();`, which races the server action out from under
+    // itself — the reload can be served before the write lands, and the
+    // failure that produces is indistinguishable from a write that never
+    // happened. It passed for as long as the action beat the reload, which is
+    // not a property of the code but of whatever else the server was doing.
+    await expect(published).toContainText(/sharing nothing with this group/i);
+
     await page.reload();
     await expect(readiness).toContainText(/nobody has chosen to share/i);
     await expect(readiness).toContainText(/not shared their readiness/i);
