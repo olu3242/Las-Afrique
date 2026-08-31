@@ -127,7 +127,14 @@ ENV CI=1 \
     NEXT_TELEMETRY_DISABLED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN npx playwright install --with-deps chromium \
+# python3 is not incidental. `tests/resolve-db-url.test.ts` runs
+# `scripts/resolve-db-url.py` through execFileSync, so a Node-only image cannot
+# run this repository's suite — it runs 433 of 445 tests and fails the rest,
+# which is how CI found this. An image that can run *most* of the suite is not
+# a certification runner.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && npx playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/*
 
 COPY . .
