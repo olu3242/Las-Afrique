@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Client } from "pg";
 import {
+  asUser,
   createMigratedDatabase,
+  createUser,
   dropDatabase,
   migrationFiles,
 } from "@/supabase/test/harness";
@@ -25,6 +27,7 @@ import {
   expectNoCustodyColumns,
   expectNoRewardCustodyColumns,
   expectOneProgramInForce,
+  expectNoSurplusClientGrants,
   expectReferralGrants,
   expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
@@ -63,6 +66,7 @@ describe("migrations", () => {
       "0013_referral_grants.sql",
       "0014_referral_code_provenance.sql",
       "0015_referral_invitation_attempts.sql",
+      "0016_revoke_surplus_client_grants.sql",
     ]);
   });
 
@@ -541,6 +545,114 @@ describe("migrations", () => {
         `${row.tablename} policy must not consult a referral`,
       ).not.toMatch(/referr|reward_/i);
     }
+  });
+
+  // --- client grants on a project with hosted default privileges ----------
+
+  describe("surplus client grants", () => {
+    // Everything here runs against a database built *with* a hosted project's
+    // ALTER DEFAULT PRIVILEGES. On a bare cluster the surplus never exists, so
+    // asserting its absence there would pass without proving anything — which
+    // is exactly how it survived twelve iterations.
+    const NAME = "tmh_test_surplus_grants";
+    let withDefaults: Client;
+
+    beforeAll(async () => {
+      withDefaults = await createMigratedDatabase(
+        NAME,
+        "alter default privileges in schema public grant all on tables to anon, authenticated;",
+      );
+    });
+
+    afterAll(async () => {
+      await withDefaults?.end();
+      await dropDatabase(NAME);
+    });
+
+    it("leaves no client role holding TRUNCATE, REFERENCES or TRIGGER", async () => {
+      await expectNoSurplusClientGrants(withDefaults);
+    });
+
+    it("still lets an owner do everything the engine needs", async () => {
+      // The other half of the claim, and the one that would catch a revoke
+      // scoped too widely: the four verbs the application actually issues,
+      // plus the embedded read across a foreign key that PostgREST performs
+      // for `select("*, country_profiles(name), travelers(id)")`. Reading
+      // across a key needs SELECT on both tables — REFERENCES is the privilege
+      // to *create* such a constraint, and confusing the two is how a
+      // hardening migration breaks trip listing.
+      const owner = await createUser(withDefaults, "owner@grants.test");
+
+      const { rows: created } = await withDefaults.query<{ id: string }>(
+        `insert into public.trips (user_id, destination_country_key, destination_city)
+         values ($1, 'nigeria', 'Lagos') returning id`,
+        [owner],
+      );
+      await withDefaults.query(
+        `insert into public.travelers (trip_id, user_id, full_name)
+         values ($1, $2, 'Ama Mensah')`,
+        [created[0].id, owner],
+      );
+
+      const result = await asUser(withDefaults, owner, async () => {
+        const embedded = await withDefaults.query<{
+          country: string | null;
+          travellers: string;
+        }>(
+          `select c.name as country, count(v.id) as travellers
+             from public.trips t
+             left join public.country_profiles c on c.key = t.destination_country_key
+             left join public.travelers v on v.trip_id = t.id
+            group by c.name`,
+        );
+
+        await withDefaults.query(
+          `insert into public.trips (user_id, destination_city) values ($1, 'Accra')`,
+          [owner],
+        );
+        await withDefaults.query(
+          `update public.trips set destination_city = 'Abuja'
+            where destination_city = 'Accra'`,
+        );
+        const deleted = await withDefaults.query(
+          `delete from public.trips where destination_city = 'Abuja'`,
+        );
+        const visible = await withDefaults.query(`select id from public.trips`);
+
+        return {
+          embedded: embedded.rows,
+          deleted: deleted.rowCount,
+          visible: visible.rowCount,
+        };
+      });
+
+      expect(result.embedded).toEqual([{ country: "Nigeria", travellers: "1" }]);
+      expect(result.deleted).toBe(1);
+      expect(result.visible).toBe(1);
+    });
+
+    it("refuses TRUNCATE, which no policy could have contained", async () => {
+      // The privilege worth singling out: row-level security does not apply to
+      // TRUNCATE, so before this migration the grant was the only thing
+      // standing between a signed-in caller and an empty table.
+      const other = await createUser(withDefaults, "truncater@grants.test");
+      await asUser(withDefaults, other, async () => {
+        await expect(
+          withDefaults.query(`truncate table public.trips`),
+        ).rejects.toThrow(/permission denied/i);
+      });
+    });
+
+    it("still keeps one user's trip out of another's reach", async () => {
+      // Cross-engine regression: the hardening must not have disturbed the
+      // boundary the tenant policies enforce.
+      const stranger = await createUser(withDefaults, "stranger@grants.test");
+      const rows = await asUser(withDefaults, stranger, async () => {
+        const { rows } = await withDefaults.query(`select id from public.trips`);
+        return rows;
+      });
+      expect(rows).toEqual([]);
+    });
   });
 
   it("is reproducible — a second fresh database yields the same schema", async () => {

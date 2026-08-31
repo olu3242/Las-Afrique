@@ -19,6 +19,7 @@ import {
   expectNoCustodyColumns,
   expectNoRewardCustodyColumns,
   expectOneProgramInForce,
+  expectNoSurplusClientGrants,
   expectReferralGrants,
   expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
@@ -245,6 +246,17 @@ describe("hosted schema", () => {
   it("ties every trip child row to the trip's owner", async () => {
     // 0006.
     await expectTenantConsistentTripKeys(db);
+  });
+
+  it("holds no surplus client privilege on any table", async () => {
+    // The same helper the local tier runs against a database built with a
+    // hosted project's default privileges. Here it runs against the project
+    // that actually inherited them — which is the only place the surplus could
+    // have survived, and did, on every table created before Iteration 12.
+    //
+    // TRUNCATE is the one worth naming: row-level security does not apply to
+    // it, so the grant was the only barrier rather than the second one.
+    await expectNoSurplusClientGrants(db);
   });
 
   it("withholds any tenant-table grant from anonymous callers", async () => {
