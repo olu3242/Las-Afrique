@@ -34,7 +34,7 @@ standing in for a dependency that does not exist is exactly the case it names.
 | 9 | Reminders | **PASS** |
 | 10 | Golden path | **PASS** |
 | 11 | Group coordination (Phase 2) | **PASS** |
-| 12 | Referral (Phase 2) | **PASS** |
+| 12 | Referral (Phase 2) | **HOSTED_PENDING** — recertifying after 0015 |
 
 Each iteration ships on its own branch and PR.
 
