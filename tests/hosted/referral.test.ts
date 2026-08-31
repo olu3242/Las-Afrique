@@ -154,6 +154,27 @@ describe("hosted referral", () => {
     expect(rows[0]?.outcome).toBe("attributed");
   });
 
+  it("5b. stores the referrer's code, never the invitation token", async () => {
+    // The defect migration 0014 fixes, asserted against the real project.
+    // referral_invitations.token_hash exists so that reading a row never
+    // yields a working credential; the first version of attribute_referral
+    // wrote the plaintext token into referrals.code, which both parties read.
+    const response = await rest(
+      "referrals?select=code,invitation_id",
+      referred.accessToken,
+    );
+    const rows = (await response.json()) as Array<{
+      code: string | null;
+      invitation_id: string | null;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].code).not.toBe(invitationToken);
+    expect(rows[0].code).toBe(code);
+    // The invitation path is recorded here, not by smuggling the token into a
+    // provenance column.
+    expect(rows[0].invitation_id).toBeTruthy();
+  });
+
   it("6. shows the referral to both parties and to nobody else", async () => {
     const asReferrer = await rest(
       "referrals?select=state,code",

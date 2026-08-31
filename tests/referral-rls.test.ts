@@ -263,6 +263,61 @@ describe("referral", () => {
       expect(outcome).toBe("attributed");
     });
 
+    it("never stores the invitation token, only the referrer's own code", async () => {
+      // The defect migration 0014 fixes. `referral_invitations.token_hash`
+      // exists so that reading a row never yields a working credential; the
+      // first version of attribute_referral wrote the plaintext token into
+      // `referrals.code`, which both parties can read, undoing exactly that.
+      await db.query(
+        `insert into public.referral_invitations
+           (user_id, program_key, email, token_hash)
+         values ($1, 'launch', 'tokencheck@elsewhere.test', 'hash-token-check')`,
+        [ama],
+      );
+
+      const row = await asUser(db, kofi, async () => {
+        await db.query(
+          `select public.attribute_referral('super-secret-token', 'hash-token-check',
+                                            now() - interval '1 minute')`,
+        );
+        const { rows } = await db.query<{
+          code: string | null;
+          invitation_id: string | null;
+        }>(`select code, invitation_id from public.referrals`);
+        return rows[0];
+      });
+
+      expect(row.code).not.toBe("super-secret-token");
+      // The referrer's own code is the meaningful provenance, and is not a
+      // secret. The invitation path is recorded by invitation_id.
+      expect(row.code).toBe("AMACODE01");
+      expect(row.invitation_id).toBeTruthy();
+    });
+
+    it("records a null code rather than inventing one when the referrer has none", async () => {
+      // A referrer who invited without ever minting a code. Null is honest;
+      // the alternative was a placeholder that reads like a real code.
+      await db.query(
+        `insert into public.referral_invitations
+           (user_id, program_key, email, token_hash)
+         values ($1, 'launch', 'nocode@elsewhere.test', 'hash-no-code')`,
+        [amaAlias],
+      );
+
+      const row = await asUser(db, kofi, async () => {
+        await db.query(
+          `select public.attribute_referral('another-secret', 'hash-no-code',
+                                            now() - interval '1 minute')`,
+        );
+        const { rows } = await db.query<{ code: string | null }>(
+          `select code from public.referrals`,
+        );
+        return rows[0];
+      });
+
+      expect(row?.code).toBeNull();
+    });
+
     it("refuses an invitation that has expired", async () => {
       await db.query(
         `insert into public.referral_invitations

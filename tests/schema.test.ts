@@ -61,6 +61,7 @@ describe("migrations", () => {
       "0011_group_coordination.sql",
       "0012_referrals.sql",
       "0013_referral_grants.sql",
+      "0014_referral_code_provenance.sql",
     ]);
   });
 

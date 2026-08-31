@@ -180,10 +180,15 @@ test.describe("referral, signed in", () => {
     // The referred user's own view of the attribution. They can always see
     // that they were attributed — being the subject of an attribution you
     // cannot inspect is not a position to put someone in.
+    //
+    // What they see is the *referrer's code*, not the invitation token they
+    // followed. This assertion is what found migration 0014: it was showing
+    // the token, because attribute_referral had stored the plaintext of a
+    // credential the schema deliberately hashes.
     await openReferrals(referredPage);
-    await expect(
-      referredPage.getByRole("region", { name: "How you arrived" }),
-    ).toContainText(code as string);
+    const arrival = referredPage.getByRole("region", { name: "How you arrived" });
+    await expect(arrival).toContainText(code as string);
+    await expect(arrival).not.toContainText(token);
 
     // --- back to the referrer ----------------------------------------------
     // VERIFY PERSISTENCE, before the rendered assertions rather than after, so

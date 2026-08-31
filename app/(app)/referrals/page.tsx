@@ -215,11 +215,20 @@ export default async function ReferralsPage() {
                   cannot inspect is not a position to put someone in — and the
                   policy grants them this read for that reason.
                 */}
-                Your account was attributed to the referral link{" "}
-                <span className="text-data text-ivory/80">
-                  {ownAttribution.code}
-                </span>{" "}
-                on {formatDate(ownAttribution.attributed_at)}.
+                {ownAttribution.code ? (
+                  <>
+                    Your account was attributed to the referral link{" "}
+                    <span className="text-data text-ivory/80">
+                      {ownAttribution.code}
+                    </span>{" "}
+                    on {formatDate(ownAttribution.attributed_at)}.
+                  </>
+                ) : (
+                  <>
+                    Your account was attributed to a referral on{" "}
+                    {formatDate(ownAttribution.attributed_at)}.
+                  </>
+                )}
               </p>
             </section>
           ) : null}

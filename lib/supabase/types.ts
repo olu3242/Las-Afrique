@@ -538,8 +538,15 @@ export interface ReferralRow {
   referred_user_id: string;
   invitation_id: string | null;
   state: ReferralState;
-  /** Provenance: which string was resolved, and when the touch happened. */
-  code: string;
+  /**
+   * Provenance: the referrer's own shareable code, and when the touch
+   * happened. Null when the referrer had no code for that programme.
+   *
+   * Never an invitation token. Those are credentials, stored hashed on
+   * `referral_invitations`, and 0014 exists because this column briefly held
+   * one in the clear.
+   */
+  code: string | null;
   touched_at: string;
   attributed_at: string;
   qualified_at: string | null;
