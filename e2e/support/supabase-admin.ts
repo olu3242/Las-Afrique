@@ -1,3 +1,5 @@
+import { Client } from "pg";
+
 /**
  * Creates and removes probe users for the signed-in end-to-end journey.
  *
@@ -177,6 +179,36 @@ export async function readAsAdmin(
   config: AdminConfig,
   path: string,
 ): Promise<unknown> {
+  // Direct SQL when a database connection is configured; PostgREST otherwise.
+  //
+  // The two tiers disagree about `service_role`, and the disagreement is not
+  // this project's doing. A hosted project created under the old default
+  // carries ALTER DEFAULT PRIVILEGES granting every new public table to anon,
+  // authenticated *and* service_role, so reading through PostgREST as
+  // service_role works there. The Supabase CLI's local stack follows the new
+  // default and exposes nothing automatically, so the same read answers:
+  //
+  //   42501  permission denied for table group_memberships
+  //   hint:  GRANT SELECT ON public.group_memberships TO service_role;
+  //
+  // Taking that hint would have been the wrong fix. No migration grants
+  // service_role anything, no application module imports
+  // lib/supabase/admin.ts, and the privilege only exists on the hosted project
+  // by accident of when it was created. Adding a grant to make a *test helper*
+  // work would widen exactly what migration 0016 had just finished narrowing.
+  //
+  // So the helper stops needing the privilege instead. A direct connection
+  // bypasses row-level security because it is the owner, which is what this
+  // helper was always asking for.
+  const databaseUrl = process.env.TEST_DATABASE_URL || process.env.SUPABASE_DB_URL;
+  if (databaseUrl) {
+    try {
+      return await readOverSql(databaseUrl, path);
+    } catch (error) {
+      return { error: "sql", message: (error as Error).message };
+    }
+  }
+
   const adminKey = await serviceRoleKey(config);
   const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, {
     headers: {
@@ -188,4 +220,55 @@ export async function readAsAdmin(
     return { error: response.status, body: await response.text() };
   }
   return response.json();
+}
+
+/**
+ * The narrow slice of PostgREST's query syntax these journeys actually use:
+ * `table?select=a,b&col=eq.value`, optionally with `order=col.desc`.
+ *
+ * Deliberately narrow. A general translator would be a second query language
+ * to get wrong, and the failure mode of getting it wrong is a diagnostic that
+ * lies about what the database holds — which is the one thing this helper
+ * exists to prevent.
+ */
+async function readOverSql(databaseUrl: string, path: string): Promise<unknown> {
+  const [table, rawQuery = ""] = path.split("?");
+  const params = new URLSearchParams(rawQuery);
+
+  const columns = params.get("select") || "*";
+  if (!/^[a-z0-9_]+$/i.test(table)) throw new Error(`unsupported table: ${table}`);
+  if (!/^[a-z0-9_,*\s]+$/i.test(columns)) {
+    throw new Error(`unsupported select: ${columns}`);
+  }
+
+  const wheres: string[] = [];
+  const values: unknown[] = [];
+  let order = "";
+
+  for (const [key, value] of params.entries()) {
+    if (key === "select") continue;
+    if (key === "order") {
+      const [column, direction] = value.split(".");
+      if (!/^[a-z0-9_]+$/i.test(column)) throw new Error(`unsupported order: ${value}`);
+      order = ` order by ${column} ${direction === "desc" ? "desc" : "asc"}`;
+      continue;
+    }
+    const [operator, ...rest] = value.split(".");
+    if (operator !== "eq") throw new Error(`unsupported operator: ${operator}`);
+    if (!/^[a-z0-9_]+$/i.test(key)) throw new Error(`unsupported column: ${key}`);
+    values.push(rest.join("."));
+    wheres.push(`${key} = $${values.length}`);
+  }
+
+  const where = wheres.length > 0 ? ` where ${wheres.join(" and ")}` : "";
+  const sql = `select ${columns} from public.${table}${where}${order}`;
+
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const { rows } = await client.query(sql, values);
+    return rows;
+  } finally {
+    await client.end();
+  }
 }
