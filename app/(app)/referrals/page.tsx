@@ -59,8 +59,16 @@ export default async function ReferralsPage() {
             </h2>
             {code ? (
               <>
+                {/*
+                  A <code> element, because that is what this is: a literal
+                  string to be copied exactly. It also gives the string its own
+                  node, which matters more than it looks — the surrounding
+                  prose runs straight into it in `textContent`, so anything
+                  reading the code out of the section's combined text picks up
+                  the first letter of the next sentence with it.
+                */}
                 <p className="mt-4 break-all text-data text-lg text-sunset">
-                  /r/{code.code}
+                  <code>/r/{code.code}</code>
                 </p>
                 <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted">
                   Anyone who signs up within{" "}

@@ -122,9 +122,14 @@ test.describe("referral, signed in", () => {
     const link = page.getByRole("region", { name: "Your link" });
     await expect(link).toContainText("/r/");
 
-    const codeText = (await link.textContent()) ?? "";
-    const code = /\/r\/([A-Z0-9]{8,16})/.exec(codeText)?.[1];
-    expect(code, `no referral code rendered — page said: ${codeText}`).toBeTruthy();
+    // Read from the code's own element, not the section's combined text. The
+    // prose after it begins "Anyone who signs up…", and in `textContent` that
+    // runs straight on from the code with no separator — so a regex over the
+    // section captured the leading "A" as part of the code and then asserted
+    // against a string the database had never held.
+    const codeText = (await link.locator("code").textContent()) ?? "";
+    const code = /^\/r\/([A-Z0-9]{8,16})$/.exec(codeText.trim())?.[1];
+    expect(code, `no referral code rendered — element said: ${codeText}`).toBeTruthy();
 
     // Idempotent: the page mints on every load, and must not mint twice. The
     // second load is also the one that used to work while the first returned
