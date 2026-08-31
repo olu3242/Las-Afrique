@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ensureReferralCode, revokeInvitation } from "@/lib/referrals/actions";
+import { revokeInvitation } from "@/lib/referrals/actions";
 import { REFERRAL_STATUS_LABELS } from "@/lib/referrals/lifecycle";
 import { getReferralOverview } from "@/lib/referrals/service";
 import { ReferralInviteForm } from "./invite-form";
@@ -19,10 +19,11 @@ function formatDate(iso: string): string {
 }
 
 export default async function ReferralsPage() {
-  // Idempotent: one code per person per programme, enforced by a unique
-  // constraint rather than by this call happening exactly once.
-  await ensureReferralCode();
-
+  // The overview mints the caller's code if they have none — idempotently,
+  // through the service rather than through the server action of the same
+  // name. A render may not call a server action: `revalidatePath` is
+  // unsupported there and the page 500s. It did, for every user's first visit,
+  // until a hosted run caught it.
   const { program, code, summary, entitlements, ownAttribution } =
     await getReferralOverview();
 

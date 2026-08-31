@@ -1,7 +1,9 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
+import { codeFromBytes } from "./attribution";
+import { buildReferralEvent, nullEventSink } from "./events";
 import type {
   ReferralCodeRow,
   ReferralInvitationRow,
@@ -59,11 +61,85 @@ export function actorRef(userId: string): string {
   return createHash("sha256").update(`referral:${userId}`).digest("hex").slice(0, 32);
 }
 
+/**
+ * The caller's code for the programme in force, minting one if they have none.
+ *
+ * Idempotent by construction: `(user_id, program_key)` is unique, so two
+ * concurrent requests cannot mint two codes — the loser's insert is refused
+ * and it reads the winner's row.
+ *
+ * Lives here rather than in the action, and that is the whole point. The
+ * referrals page needs a code to exist before it can render one, so it calls
+ * this during render — and a server action cannot be called during render,
+ * because `revalidatePath` is unsupported there. That is not a style
+ * preference: it returns a 500.
+ *
+ * A hosted run found it the hard way. The action revalidated only on the
+ * branch that actually minted, so the page worked for anyone who already had
+ * a code and returned 500 to every user on their first visit — which is
+ * exactly the case the three browser journeys exercised, and the only case a
+ * developer with an existing code would never see.
+ *
+ * So the mutation lives in the service, where render may call it, and the
+ * action is a thin wrapper that adds the revalidation for callers that are
+ * not a render.
+ */
+export async function ensureOwnReferralCode(): Promise<string | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const program = await currentProgram();
+  if (!program) return null;
+
+  const { data: existing } = await supabase
+    .from("referral_codes")
+    .select("code")
+    .eq("program_key", program.key)
+    .maybeSingle();
+  if (existing) return existing.code;
+
+  const code = codeFromBytes(randomBytes(16));
+  const { error } = await supabase.from("referral_codes").insert({
+    user_id: user.id,
+    program_key: program.key,
+    code,
+  });
+
+  if (error) {
+    // Either the race above or a collision on the code's unique index. Both
+    // are answered by reading rather than by retrying blindly.
+    const { data: after } = await supabase
+      .from("referral_codes")
+      .select("code")
+      .eq("program_key", program.key)
+      .maybeSingle();
+    return after?.code ?? null;
+  }
+
+  nullEventSink.record(
+    buildReferralEvent({
+      name: "referral.code_created",
+      programKey: program.key,
+      actorRef: actorRef(user.id),
+      at: new Date(),
+    }),
+  );
+
+  return code;
+}
+
 export async function getReferralOverview(): Promise<ReferralOverview> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Minted here rather than by the page calling an action: see
+  // `ensureOwnReferralCode`. A render may not call a server action.
+  await ensureOwnReferralCode();
 
   const program = await currentProgram();
 

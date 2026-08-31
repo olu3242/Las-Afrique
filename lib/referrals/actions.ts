@@ -7,14 +7,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { field, type ActionState } from "@/lib/forms";
 import {
-  codeFromBytes,
   decodeTouch,
   encodeTouch,
   TOUCH_COOKIE,
   TOUCH_COOKIE_MAX_AGE_SECONDS,
 } from "./attribution";
 import { buildReferralEvent, nullEventSink } from "./events";
-import { actorRef, currentProgram } from "./service";
+import { actorRef, currentProgram, ensureOwnReferralCode } from "./service";
 import { validateReferralInvite, type InviteField } from "./validation";
 
 /**
@@ -57,56 +56,21 @@ function hashToken(token: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Idempotent by construction.
+ * The action form of `ensureOwnReferralCode`.
  *
- * `(user_id, program_key)` is unique, so a second call cannot mint a second
- * code even if two requests race — the loser's insert is refused and it reads
- * the winner's row. That is the property, and it lives in the schema rather
- * than in a read-then-write here.
+ * A thin wrapper: the mutation itself lives in the service, because the
+ * referrals page has to call it during render and a render may not call a
+ * server action — `revalidatePath` throws there, and the page returns 500.
+ * This exists for callers that are not a render, and adds the revalidation
+ * they need.
  */
 export async function ensureReferralCode(): Promise<
   { status: "ok"; code: string } | { status: "unavailable" }
 > {
-  const { supabase, user } = await requireUser();
+  await requireUser();
 
-  const program = await currentProgram();
-  if (!program) return { status: "unavailable" };
-
-  const { data: existing } = await supabase
-    .from("referral_codes")
-    .select("code")
-    .eq("program_key", program.key)
-    .maybeSingle();
-
-  if (existing) return { status: "ok", code: existing.code };
-
-  const code = codeFromBytes(randomBytes(16));
-  const { error } = await supabase.from("referral_codes").insert({
-    user_id: user.id,
-    program_key: program.key,
-    code,
-  });
-
-  if (error) {
-    // Either the race above, or a collision on the code's unique index. Both
-    // are answered by reading rather than by retrying blindly.
-    const { data: after } = await supabase
-      .from("referral_codes")
-      .select("code")
-      .eq("program_key", program.key)
-      .maybeSingle();
-    if (after) return { status: "ok", code: after.code };
-    return { status: "unavailable" };
-  }
-
-  nullEventSink.record(
-    buildReferralEvent({
-      name: "referral.code_created",
-      programKey: program.key,
-      actorRef: actorRef(user.id),
-      at: new Date(),
-    }),
-  );
+  const code = await ensureOwnReferralCode();
+  if (!code) return { status: "unavailable" };
 
   revalidatePath("/referrals");
   return { status: "ok", code };

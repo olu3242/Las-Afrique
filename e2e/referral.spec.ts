@@ -69,6 +69,39 @@ test.describe("referral, signed in", () => {
     }
   });
 
+  /**
+   * Open /referrals and prove it actually rendered.
+   *
+   * Written after a hosted run in which all three journeys failed on their
+   * first locator with "element(s) not found" — which is equally true whether
+   * the page rendered its empty state, redirected, or returned a 500. It was a
+   * 500, and the log could not say so: the whole engine looked broken when one
+   * unsupported call in one component was.
+   *
+   * So the failure message carries what the page actually said. Same principle
+   * as Iteration 11's admin read: put the real state into the message rather
+   * than leave the next person to guess between three possibilities.
+   */
+  async function openReferrals(page: Page) {
+    const response = await page.goto("/referrals");
+    const status = response?.status();
+    const heading = await page
+      .getByRole("heading", { level: 1 })
+      .textContent()
+      .catch(() => null);
+    const body = ((await page.locator("body").textContent()) ?? "").slice(0, 400);
+
+    expect(
+      status,
+      `GET /referrals answered ${status}. h1: ${heading}. Body: ${body}`,
+    ).toBeLessThan(400);
+
+    await expect(
+      page.getByRole("heading", { level: 1 }),
+      `/referrals did not render its own heading. Status ${status}. Body: ${body}`,
+    ).toContainText("Introducing someone");
+  }
+
   async function signIn(page: Page, user: ProbeUser) {
     await page.goto("/login");
     await page.getByLabel("Email address").fill(user.email);
@@ -85,7 +118,7 @@ test.describe("referral, signed in", () => {
     await signIn(page, referrer);
 
     // --- the referrer's own code -------------------------------------------
-    await page.goto("/referrals");
+    await openReferrals(page);
     const link = page.getByRole("region", { name: "Your link" });
     await expect(link).toContainText("/r/");
 
@@ -93,8 +126,11 @@ test.describe("referral, signed in", () => {
     const code = /\/r\/([A-Z0-9]{8,16})/.exec(codeText)?.[1];
     expect(code, `no referral code rendered — page said: ${codeText}`).toBeTruthy();
 
-    // Idempotent: the page mints on every load, and must not mint twice.
-    await page.reload();
+    // Idempotent: the page mints on every load, and must not mint twice. The
+    // second load is also the one that used to work while the first returned
+    // 500, so asserting both is what distinguishes "minting is broken" from
+    // "minting during render is broken".
+    await openReferrals(page);
     await expect(link).toContainText(`/r/${code}`);
 
     // --- an invitation ------------------------------------------------------
@@ -144,7 +180,7 @@ test.describe("referral, signed in", () => {
     // The referred user's own view of the attribution. They can always see
     // that they were attributed — being the subject of an attribution you
     // cannot inspect is not a position to put someone in.
-    await referredPage.goto("/referrals");
+    await openReferrals(referredPage);
     await expect(
       referredPage.getByRole("region", { name: "How you arrived" }),
     ).toContainText(code as string);
@@ -162,7 +198,7 @@ test.describe("referral, signed in", () => {
       `reward_entitlements?select=reward_policy_key,user_id&user_id=eq.${referrer.id}`,
     );
 
-    await page.goto("/referrals");
+    await openReferrals(page);
     const referralList = page.getByRole("list", { name: "Referrals you have made" });
 
     await expect(
@@ -193,7 +229,7 @@ test.describe("referral, signed in", () => {
     );
 
     // Nor anything about them on the referral page itself.
-    await page.goto("/referrals");
+    await openReferrals(page);
     await expect(page.locator("body")).not.toContainText("Lagos");
     await expect(page.locator("body")).not.toContainText(referred.email);
 
@@ -206,10 +242,8 @@ test.describe("referral, signed in", () => {
     const referrer = await newUser();
     await signIn(page, referrer);
 
-    await page.goto("/referrals");
-    await expect(
-      page.getByLabel("Email address"),
-    ).toBeVisible();
+    await openReferrals(page);
+    await expect(page.getByLabel("Email address")).toBeVisible();
     await page.getByLabel("Email address").fill(referrer.email);
     await page.getByRole("button", { name: /create invitation/i }).click();
 
@@ -226,7 +260,7 @@ test.describe("referral, signed in", () => {
     const stranger = await newUser();
     await signIn(page, stranger);
 
-    await page.goto("/referrals");
+    await openReferrals(page);
     // Their own page, with their own code — and an empty list, because a
     // referral is visible to its two parties and nobody else.
     await expect(page.getByRole("region", { name: "Your link" })).toContainText(
