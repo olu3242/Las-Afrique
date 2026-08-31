@@ -5,14 +5,21 @@ import {
   GROUP_ROOT_TABLE,
   GROUP_TABLES,
   REFERENCE_TABLES,
+  REFERRAL_DUAL_PARTY_TABLES,
+  REFERRAL_REFERENCE_TABLES,
+  REFERRAL_TENANT_TABLES,
   TENANT_TABLES,
 } from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
   expectCountryProvenanceConstraints,
+  expectDualPartyReferralPolicies,
   expectGroupHelperFunctions,
   expectGroupTableInvariants,
   expectNoCustodyColumns,
+  expectNoRewardCustodyColumns,
+  expectOneProgramInForce,
+  expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
 } from "../support/schema-queries";
 
@@ -61,6 +68,7 @@ describe("hosted schema", () => {
       ...TENANT_TABLES,
       ...REFERENCE_TABLES,
       ...GROUP_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
       GROUP_ROOT_TABLE,
     ].sort();
     expect(actual).toEqual(expected);
@@ -136,6 +144,66 @@ describe("hosted schema", () => {
         row.qual ?? "",
         `${row.tablename} policy must not consult group membership`,
       ).not.toMatch(/is_group_member|can_coordinate|group_/i);
+    }
+  });
+
+  // --- referral (Iteration 12) -------------------------------------------
+  //
+  // The same shared helpers again, for the reason hosted run 29 established:
+  // adding an assertion to the local tier and not this one is the drift these
+  // helpers exist to prevent, and the local tier can be green while the
+  // project has none of it.
+
+  it("makes referrals readable by both parties and writable by neither", async () => {
+    await expectDualPartyReferralPolicies(db);
+  });
+
+  it("makes the referral definer functions pinned, and normalise_email immutable", async () => {
+    await expectReferralHelperFunctions(db);
+  });
+
+  it("has exactly one referral programme in force", async () => {
+    await expectOneProgramInForce(db);
+  });
+
+  it("keeps custody of money out of the referral schema", async () => {
+    await expectNoRewardCustodyColumns(db, [
+      ...REFERRAL_TENANT_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
+      ...REFERRAL_REFERENCE_TABLES,
+    ]);
+  });
+
+  it("leaves the owner-scoped tables untouched by referral policies", async () => {
+    const { rows } = await db.query<{ tablename: string; qual: string | null }>(
+      `select tablename, qual from pg_policies
+        where schemaname = 'public'
+          and tablename in ('trips', 'travelers', 'document_records',
+                            'cost_estimates', 'savings_plans', 'vault_files')`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        row.qual ?? "",
+        `${row.tablename} policy must not consult a referral`,
+      ).not.toMatch(/referr|reward_/i);
+    }
+  });
+
+  it("withholds every referral grant from anonymous callers", async () => {
+    // The link route reads nothing as anon, so there is no reason for a single
+    // grant to exist here — including on the programme rules.
+    const { rows } = await db.query<{ table_name: string }>(
+      `select table_name from information_schema.role_table_grants
+       where grantee = 'anon' and table_schema = 'public'`,
+    );
+    const granted = rows.map((r) => r.table_name);
+    for (const table of [
+      ...REFERRAL_TENANT_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
+      ...REFERRAL_REFERENCE_TABLES,
+    ]) {
+      expect(granted, `anon should hold no grant on ${table}`).not.toContain(table);
     }
   });
 

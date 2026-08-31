@@ -1,15 +1,16 @@
 # Iteration 12 — Referral Engine
 
-**Status: PROPOSAL. Not approved, not implementable.**
+**Status: APPROVED and BUILT.** Implemented in migration `0012_referrals.sql`
+and `lib/referrals/`.
 
-This document exists to be argued with. Nothing in it is authoritative until it
-is approved, and no implementation may begin before then — Iteration 12 was
-stopped at scope discovery precisely because the roadmap named "Referral and
-rewards" without specifying an engine, and filling that gap by writing code
-would have been the invention the standard forbids.
+The six **[DECISION]** items below were resolved as proposed. Where the
+approval pointed at "the proposed value in the scope" and this document did not
+actually contain one, that is recorded honestly in §14 rather than papered
+over.
 
-Where a decision is genuinely the product owner's rather than mine, it is
-marked **[DECISION]** and left open rather than resolved by default.
+The rest of this document is the proposal as it was approved. §14 records where
+the implementation refined it and why — the proposal is the record of what was
+agreed, so it is not silently rewritten to match the code.
 
 ---
 
@@ -368,3 +369,69 @@ without it, and deciding it later cannot invalidate anything built here.
 - Expose any referred user's trip, readiness, documents or behaviour
 - Require an AI provider — deterministic throughout, no dependency on the
   Iteration 6 blocker
+
+---
+
+## 14. As built
+
+The approved decisions, and where the implementation departed from the
+proposal.
+
+### The six decisions
+
+| # | Decision | Resolved as | Where it lives |
+| --- | --- | --- | --- |
+| 1 | Qualification predicate | First trip created | `referral_programs.qualification_predicate` |
+| 2 | Attribution window | 30 days | `referral_programs.attribution_window_days` |
+| 3 | Attribution model | Last touch within the window | The touch cookie, overwritten per resolution |
+| 4 | Invitation rate limit | **20 per referrer per day — see below** | `referral_programs.invitation_rate_limit_per_day` |
+| 5 | Disposable addresses | Not policed | No blocklist exists, by design |
+| 6 | Analytics destination | **None — shape only, see below** | `lib/referrals/events.ts` |
+
+**Decisions 4 and 6 named a proposed value this document did not contain.**
+
+§6 marked the rate limit `[DECISION: limit]` with no number, and §10 stated
+that no analytics sink exists and defined shape only. Rather than block the
+whole engine on a constant, both were implemented so that the value is data
+rather than a code change:
+
+- **The rate limit is a programme column**, seeded at **20 per referrer per
+  day**. It is a starting value chosen so that a person inviting their family
+  is never impeded and a script is. Changing it is a programme version — end
+  the current one, insert the next — not an edit and not a deploy.
+- **Analytics has no destination.** Events are built, validated and discarded
+  by `nullEventSink`. That is not a mock standing in for a dependency that
+  exists; there is no analytics service in this codebase. When one is chosen it
+  implements `ReferralEventSink` and the shapes are already fixed and tested.
+
+### Where the implementation refined the proposal
+
+**The stored states are `joined | qualified | disqualified`, not four.** §4
+draws the referrer's lifecycle as `INVITED → JOINED → QUALIFIED`, and that is
+exactly what the referrer sees. But a `referrals` row only exists once a signup
+has been attributed, so `invited` is a state the table can never hold. Storing
+it would have created an unreachable enum value. `INVITED` is composed in
+`lib/referrals/lifecycle.ts` from a pending invitation with nothing attributed
+to it. The visible lifecycle is unchanged.
+
+**`referrals` needed no definer helper for its read policy.** §8 anticipated
+one, following Iteration 11. It turned out not to be required: "readable by
+either of two parties" is a disjunction over two columns of the row itself, not
+a lookup, so there is no recursion to break. The definer functions that do
+exist are there for the *writes*, which is a different problem.
+
+**Attribution also runs at sign-in, not only at signup.** On a project with
+email confirmation enabled, `signUp` returns no session at all — so attributing
+only at signup would leave the engine silently inert on exactly those projects.
+Attempting it at every sign-in needs a guard, or a long-standing user clicking a
+friend's link would credit a referrer. `attribute_referral` therefore refuses a
+touch that predates the account: `created_at` is not a column a caller can
+forge, and the rule states the real requirement — the touch has to come before
+the account, or this is not a referral.
+
+**`resolveReferralCode` is reached through a route handler, not a page.** Only a
+route handler or a server action may write a cookie, and the touch is a cookie.
+`app/r/[token]/route.ts` reads nothing from the database: a public endpoint that
+could tell a valid code from an invalid one is an enumeration oracle, and one
+that resolved a code to its owner would disclose the referrer to anyone holding
+a link. It is also why no referral table grants `anon` a single privilege.

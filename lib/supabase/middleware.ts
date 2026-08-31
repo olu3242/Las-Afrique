@@ -18,6 +18,12 @@ export const PROTECTED_PREFIXES = [
   // specific user, so the gate sends the invitee to sign in and `next` brings
   // them back to the same link afterwards.
   "/groups",
+  // The referral surface: a member's own code, invitations and entitlements.
+  // The link itself — /r/<token> — is deliberately *not* gated. It writes a
+  // cookie and redirects, reads nothing, and gating it would send a visitor
+  // who has no account yet to a sign-in page instead of the signup the link
+  // exists to reach.
+  "/referrals",
 ] as const;
 
 export function isProtectedPath(pathname: string): boolean {

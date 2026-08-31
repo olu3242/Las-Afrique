@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { field, type ActionState } from "@/lib/forms";
 import { listCountryOptions } from "./service";
 import { rescheduleTripReminders } from "@/lib/reminders/service";
+import { evaluateQualification } from "@/lib/referrals/actions";
 import {
   todayIso,
   validateTravelerInput,
@@ -97,6 +98,13 @@ export async function createTrip(
       message: "We could not save that trip. Try again.",
     };
   }
+
+  // Creating a trip is the qualifying event under the approved programme. It
+  // runs here rather than on a schedule so the referrer sees the transition
+  // when it happens, and it cannot throw — a referral that fails to evaluate
+  // must never cost someone the trip they just created. Same rule, and the
+  // same swallow-and-continue wrapper, as rescheduleTripReminders.
+  await evaluateQualification();
 
   revalidatePath("/dashboard");
   redirect(`/trips/${data.id}`);

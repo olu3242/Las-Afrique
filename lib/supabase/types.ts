@@ -268,6 +268,11 @@ export interface Database {
       savings_plans: Table<SavingsPlanRow>;
       vault_files: Table<VaultFileRow>;
       reminders: Table<ReminderRow>;
+      referral_programs: Table<ReferralProgramRow>;
+      referral_codes: Table<ReferralCodeRow>;
+      referral_invitations: Table<ReferralInvitationRow>;
+      referrals: Table<ReferralRow>;
+      reward_entitlements: Table<RewardEntitlementRow>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -283,6 +288,9 @@ export interface Database {
       assumption_basis: AssumptionBasis;
       reminder_channel: ReminderChannel;
       reminder_status: ReminderStatus;
+      referral_state: ReferralState;
+      referral_invitation_state: ReferralInvitationState;
+      referral_qualification_predicate: ReferralQualificationPredicate;
     };
   };
 }
@@ -297,12 +305,20 @@ export const TENANT_TABLES = [
   "savings_plans",
   "vault_files",
   "reminders",
+  // Iteration 12. These obey the same single-owner rule as everything above —
+  // `user_id = auth.uid()`, all four verbs, `with check` alongside `using` —
+  // so they are asserted by the same certified checks rather than by a new
+  // list that would have to re-prove the same properties.
+  "referral_codes",
+  "referral_invitations",
+  "reward_entitlements",
 ] as const;
 
 /** Tables that are public reference data rather than tenant-scoped. */
 export const REFERENCE_TABLES = [
   "country_profiles",
   "cost_assumptions",
+  "referral_programs",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -446,3 +462,126 @@ export const GROUP_TABLES = [
   "group_activity_participation",
   "group_dependencies",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Referral (Iteration 12)
+//
+// Three shapes live here, and they are deliberately not one:
+//
+//   REFERENCE          referral_programs — the rules, versioned, world-readable
+//   TENANT             referral_codes, referral_invitations, reward_entitlements
+//                      — owner-scoped, the same single-owner rule as everything
+//                      in TENANT_TABLES, so they join that list
+//   DUAL-PARTY         referrals — readable by the referrer *and* the referred
+//                      user, writable by neither. It carries no `user_id`, so
+//                      it cannot join TENANT_TABLES without weakening what that
+//                      list asserts; it is asserted separately instead.
+// ---------------------------------------------------------------------------
+
+/** The states a `referrals` row can actually hold. */
+export type ReferralState = "joined" | "qualified" | "disqualified";
+
+export type ReferralInvitationState =
+  | "pending"
+  | "accepted"
+  | "revoked"
+  | "expired";
+
+export type ReferralQualificationPredicate =
+  | "account_created"
+  | "first_trip_created"
+  | "first_trip_with_destination_and_dates";
+
+export interface ReferralProgramRow {
+  key: string;
+  name: string;
+  qualification_predicate: ReferralQualificationPredicate;
+  attribution_window_days: number;
+  invitation_rate_limit_per_day: number;
+  /** Names which benefit applies. Never an amount, never a currency. */
+  reward_policy_key: string;
+  effective_from: string;
+  effective_to: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReferralCodeRow {
+  id: string;
+  user_id: string;
+  program_key: string;
+  code: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReferralInvitationRow {
+  id: string;
+  user_id: string;
+  program_key: string;
+  email: string;
+  /** Generated. One definition of "the same address", shared with the index. */
+  email_normalised: string;
+  /** Hashed. The plaintext token exists only in the invitation link. */
+  token_hash: string;
+  state: ReferralInvitationState;
+  accepted_by: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReferralRow {
+  id: string;
+  program_key: string;
+  referrer_id: string;
+  referred_user_id: string;
+  invitation_id: string | null;
+  state: ReferralState;
+  /** Provenance: which string was resolved, and when the touch happened. */
+  code: string;
+  touched_at: string;
+  attributed_at: string;
+  qualified_at: string | null;
+  disqualified_at: string | null;
+  disqualified_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * "Earned under policy X at time T."
+ *
+ * No amount. No currency. No balance. If a benefit has a monetary value that
+ * value belongs to the policy description, outside this engine — never as a
+ * liability recorded against a user. PRD §8.
+ */
+export interface RewardEntitlementRow {
+  id: string;
+  user_id: string;
+  referral_id: string;
+  program_key: string;
+  reward_policy_key: string;
+  earned_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * The dual-party table. Named separately because its access model is neither
+ * single-owner nor membership-scoped, and folding it into either list would
+ * have meant weakening what that list asserts.
+ */
+export const REFERRAL_DUAL_PARTY_TABLES = ["referrals"] as const;
+
+/** Owner-scoped referral tables, listed for the assertions they share. */
+export const REFERRAL_TENANT_TABLES = [
+  "referral_codes",
+  "referral_invitations",
+  "reward_entitlements",
+] as const;
+
+/** Reference data added by Iteration 12. */
+export const REFERRAL_REFERENCE_TABLES = ["referral_programs"] as const;
