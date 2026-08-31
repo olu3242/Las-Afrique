@@ -1,7 +1,10 @@
 # Iteration 12 — Referral Engine
 
-**Status: APPROVED and BUILT.** Implemented in migration `0012_referrals.sql`
-and `lib/referrals/`.
+**Status: APPROVED, BUILT and CERTIFIED.** Implemented in migrations
+`0012_referrals.sql`, `0013_referral_grants.sql` and
+`0014_referral_code_provenance.sql`, plus `lib/referrals/`. Certified against
+the live project — run
+[33400709194](https://github.com/olu3242/Las-Afrique/actions/runs/33400709194).
 
 The six **[DECISION]** items below were resolved as proposed. Where the
 approval pointed at "the proposed value in the scope" and this document did not
