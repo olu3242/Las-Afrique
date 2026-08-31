@@ -194,12 +194,18 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
 
-      # All three: the per-iteration journey, the golden path that proves the
-      # engines compose, and group coordination. The skip guard below covers
-      # every one of them — a group spec that skipped would otherwise look
-      # exactly like a group spec that passed.
+      # All four: the per-iteration journey, the golden path that proves the
+      # engines compose, group coordination, and referral. The skip guard below
+      # covers every one of them — a spec that skipped would otherwise look
+      # exactly like a spec that passed.
+      #
+      # This list is explicit rather than a directory glob, which means a new
+      # engine's spec has to be added here. Leaving it out is worse than a
+      # failing test: the hosted run goes green having never exercised the
+      # engine, and the skip guard cannot catch a spec it was never asked to
+      # run. Iteration 12 was added here in the same commit as the spec itself.
       - name: Prove the signed-in journey in a browser
-        run: npx playwright test e2e/trip-onboarding.spec.ts e2e/golden-path.spec.ts e2e/group-coordination.spec.ts
+        run: npx playwright test e2e/trip-onboarding.spec.ts e2e/golden-path.spec.ts e2e/group-coordination.spec.ts e2e/referral.spec.ts
         env:
           HOSTED_PROBE_EMAIL_DOMAIN: ${{ secrets.HOSTED_PROBE_EMAIL_DOMAIN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
