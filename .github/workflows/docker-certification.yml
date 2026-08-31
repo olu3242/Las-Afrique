@@ -59,6 +59,10 @@ jobs:
       - name: Start the local Supabase stack
         run: npm run docker:start
 
+      # Both images. The certification image carries the pinned Chromium the
+      # browser journeys run in — this workflow installs no browser on the
+      # runner itself, deliberately: a certification tier should not depend on
+      # whatever browser its host happens to have.
       - name: Build the application and certification images
         run: npm run docker:build
 
@@ -70,13 +74,17 @@ jobs:
       - name: Certify — two clean runs
         run: npm run certify:docker
 
+      # Kept deliberately short. The first failing run of this workflow dumped
+      # 200 lines from three containers, which pushed the actual error — a
+      # missing browser — off the end of anything readable. A diagnostic that
+      # buries the failure is worse than no diagnostic: the full logs are in
+      # the step above, and this is meant to be glanceable.
       - name: Stack state on failure
         if: failure()
         run: |
           npm run docker:status || true
-          docker compose --env-file .env.docker logs --tail 200 app || true
-          docker logs --tail 200 supabase_db_Las-Afrique || true
-          docker logs --tail 200 supabase_rest_Las-Afrique || true
+          docker compose --env-file .env.docker logs --tail 40 app || true
+          docker logs --tail 40 supabase_rest_Las-Afrique || true
 
       - name: Upload the browser report on failure
         if: failure()

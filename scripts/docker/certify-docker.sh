@@ -17,23 +17,49 @@ require_docker
 strip_hosted_credentials
 note_linked_project
 
+# ---------------------------------------------------------------------------
+# Where the suites run.
+#
+# In the certify container when its image exists: it carries a pinned Chromium,
+# which is the point of building it. Running Playwright on the host instead
+# needs a browser the host may not have — the first CI run of this workflow
+# failed exactly there, having installed no Chromium, and the journeys did not
+# run at all rather than failing loudly.
+#
+# On the host when that image is unavailable. Some environments cannot build it
+# (an egress policy that blocks apt inside containers, for one), and a tier
+# that refuses to run at all there would be worse than one that runs with the
+# host's browser and says so.
+# ---------------------------------------------------------------------------
+run_suites() {
+  if docker image inspect takemehome-certify:local >/dev/null 2>&1; then
+    log "running the suites in the certify container (pinned browser)"
+    docker compose --env-file "$ENV_FILE" run --rm certify
+  else
+    warn "certify image not built; running the suites on the host with its own browser"
+    scripts/docker/certify.sh
+  fi
+}
+
 pass=1
 run_pass() {
   printf '\n\033[1m========== CLEAN_DB_RUN_%d ==========\033[0m\n' "$pass"
   scripts/docker/stack.sh reset
   load_env_file
   docker compose --env-file "$ENV_FILE" up -d --wait app
-  scripts/docker/certify.sh
+  run_suites
   pass=$((pass + 1))
 }
 
 scripts/docker/stack.sh start
 
-# Only the application image. The `certify` service exists for running the
-# suites from inside the stack's network; this path runs them from here, and
-# building a browser image that will not be used would add several minutes to
-# every run for nothing. `npm run docker:build` builds both.
+# Both images. The certify image carries the browser the journeys run in, so
+# skipping it here is what left the first CI run of this workflow with no
+# Chromium at all. Where it cannot be built, run_suites falls back to the host
+# and says so.
 docker compose --env-file "$ENV_FILE" build app
+docker compose --env-file "$ENV_FILE" build certify || \
+  warn "certify image could not be built here; the suites will run on the host"
 
 run_pass          # CLEAN_DB_RUN_1
 run_pass          # reset, then CLEAN_DB_RUN_2 — the one that proves reproducibility

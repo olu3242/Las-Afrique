@@ -184,7 +184,13 @@ labelled as mock or unit tests, never as the thing under certification. That is
 4. **Schema, RLS, grants and unit suites.** `npm test` — each database suite
    builds its own throwaway database and replays every migration into it, so
    the chain is exercised from empty on every run.
-5. **Browser journeys** against the production build.
+5. **Browser journeys** against the production build, run inside the `certify`
+   container so the browser is the pinned one rather than whatever the host
+   happens to have. Where that image cannot be built — an egress policy that
+   blocks `apt` inside containers, for instance — the journeys fall back to the
+   host's own browser and the run says so. CI builds the image and does not
+   install a browser on the runner at all, deliberately: a certification tier
+   should not depend on its host's browser.
 6. **Skip guard.** A journey that skipped is not a journey that passed, and
    Playwright reports both as green. The hosted workflow has always refused to
    call a skip evidence; so does this.
