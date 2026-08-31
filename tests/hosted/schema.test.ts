@@ -19,6 +19,7 @@ import {
   expectNoCustodyColumns,
   expectNoRewardCustodyColumns,
   expectOneProgramInForce,
+  expectReferralGrants,
   expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
 } from "../support/schema-queries";
@@ -190,21 +191,12 @@ describe("hosted schema", () => {
     }
   });
 
-  it("withholds every referral grant from anonymous callers", async () => {
-    // The link route reads nothing as anon, so there is no reason for a single
-    // grant to exist here — including on the programme rules.
-    const { rows } = await db.query<{ table_name: string }>(
-      `select table_name from information_schema.role_table_grants
-       where grantee = 'anon' and table_schema = 'public'`,
-    );
-    const granted = rows.map((r) => r.table_name);
-    for (const table of [
-      ...REFERRAL_TENANT_TABLES,
-      ...REFERRAL_DUAL_PARTY_TABLES,
-      ...REFERRAL_REFERENCE_TABLES,
-    ]) {
-      expect(granted, `anon should hold no grant on ${table}`).not.toContain(table);
-    }
+  it("grants each referral table exactly what it needs, and nothing more", async () => {
+    // The same helper the local tier runs against a database built with a
+    // hosted project's default privileges. Here it runs against the project
+    // itself, which is the only place the surplus those defaults add could
+    // actually have survived — and did, until migration 0013.
+    await expectReferralGrants(db);
   });
 
   it("leaves country reference data readable but not writable", async () => {

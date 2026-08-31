@@ -25,6 +25,7 @@ import {
   expectNoCustodyColumns,
   expectNoRewardCustodyColumns,
   expectOneProgramInForce,
+  expectReferralGrants,
   expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
 } from "./support/schema-queries";
@@ -59,6 +60,7 @@ describe("migrations", () => {
       "0010_reminders.sql",
       "0011_group_coordination.sql",
       "0012_referrals.sql",
+      "0013_referral_grants.sql",
     ]);
   });
 
@@ -489,6 +491,26 @@ describe("migrations", () => {
       ...REFERRAL_DUAL_PARTY_TABLES,
       ...REFERRAL_REFERENCE_TABLES,
     ]);
+  });
+
+  it("grants a hosted project's authenticated role exactly what each referral table needs", async () => {
+    // The assertion that would have caught the defect 0013 fixes, and the
+    // reason it did not exist: a bare cluster has no ALTER DEFAULT PRIVILEGES,
+    // so adding a grant without revoking the surplus looks identical to
+    // getting it right. Reproduced here, and run through the same helper the
+    // hosted tier runs against the real project.
+    const name = "tmh_test_referral_grants";
+    const withDefaults = await createMigratedDatabase(
+      name,
+      "alter default privileges in schema public grant all on tables to anon, authenticated;",
+    );
+
+    try {
+      await expectReferralGrants(withDefaults);
+    } finally {
+      await withDefaults.end();
+      await dropDatabase(name);
+    }
   });
 
   it("leaves the referral programme rules with no write policy", async () => {

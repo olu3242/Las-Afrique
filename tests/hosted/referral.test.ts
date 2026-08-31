@@ -286,9 +286,28 @@ describe("hosted referral", () => {
   });
 
   it("13. refuses to re-point a qualified attribution", async () => {
-    // The immutability trigger, against the real database rather than the
-    // shim. An attribution may be reversed; it may never change hands.
-    const repointed = await rest(
+    // An attribution may be reversed; it may never change hands.
+    //
+    // This asserts the *state*, not the status code, and that distinction is
+    // the whole lesson of this probe. The first version expected a 4xx and got
+    // a 204: the update policy is `false`, so the statement matches no row and
+    // PostgREST answers "no content" — a refusal that looks exactly like a
+    // success. Reading the row back is the only form of the assertion that
+    // cannot pass by accident, the same correction Iteration 8 needed when a
+    // cached 200 was read as authorization.
+    const read = async () => {
+      const response = await rest(
+        `referrals?select=referrer_id&referred_user_id=eq.${referred.userId}`,
+        referred.accessToken,
+      );
+      const rows = (await response.json()) as Array<{ referrer_id: string }>;
+      return rows[0]?.referrer_id;
+    };
+
+    const before = await read();
+    expect(before).toBe(referrer.userId);
+
+    await rest(
       `referrals?referred_user_id=eq.${referred.userId}`,
       referred.accessToken,
       {
@@ -296,6 +315,22 @@ describe("hosted referral", () => {
         body: JSON.stringify({ referrer_id: stranger.userId }),
       },
     );
-    expect(repointed.status).toBeGreaterThanOrEqual(400);
+
+    expect(await read()).toBe(before);
+  });
+
+  it("14. holds no client grant that could write a referral at all", async () => {
+    // The defect this run found, asserted where it lives. Migration 0012
+    // revoked `anon` and added the grants `authenticated` needs, but adding a
+    // grant does not remove one — and a hosted project had already granted ALL
+    // on every new table. RLS still refused every write, which is why probe 13
+    // saw a 204 rather than a modified row; but a refusal should land at the
+    // grant layer before RLS is consulted. Migration 0013 removes the surplus.
+    const { rows } = await db.query<{ privilege_type: string }>(
+      `select privilege_type from information_schema.role_table_grants
+        where table_schema = 'public' and table_name = 'referrals'
+          and grantee = 'authenticated'`,
+    );
+    expect(rows.map((r) => r.privilege_type).sort()).toEqual(["SELECT"]);
   });
 });

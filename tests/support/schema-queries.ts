@@ -427,3 +427,70 @@ export async function expectOneProgramInForce(db: Client): Promise<void> {
   );
   expect(inForce[0].count).toBe("1");
 }
+
+/**
+ * Exactly what each referral table grants, and to whom.
+ *
+ * Shared because of the defect it exists to catch. Migration 0012 revoked
+ * `anon` and then *added* the grants `authenticated` needs — but adding a
+ * grant does not remove one, and a hosted project's ALTER DEFAULT PRIVILEGES
+ * had already granted ALL on every new table. So `authenticated` kept INSERT,
+ * UPDATE and DELETE on `referrals` and `reward_entitlements`, which no client
+ * may write, and on `referral_programs`, which is reference data.
+ *
+ * A bare local cluster has no default privileges, so the local tier could not
+ * see it: the surplus simply was not there to find. The local caller therefore
+ * runs this against a database built *with* those defaults, and the hosted
+ * caller runs it against the real project. Same assertion, both tiers — the
+ * arrangement that stops the next table repeating this.
+ *
+ * TRUNCATE is called out in the expectations because row-level security does
+ * not apply to it at all. It is the one verb no policy can contain, so a
+ * surplus grant of it is the one that matters most.
+ */
+export async function expectReferralGrants(db: Client): Promise<void> {
+  const READ_ONLY = ["referrals", "reward_entitlements", "referral_programs"];
+  const OWNER_WRITTEN = ["referral_codes", "referral_invitations"];
+
+  const { rows } = await db.query<{
+    table_name: string;
+    grantee: string;
+    privilege_type: string;
+  }>(
+    `select table_name, grantee, privilege_type
+       from information_schema.role_table_grants
+      where table_schema = 'public'
+        and grantee in ('anon', 'authenticated')
+        and table_name = any($1)`,
+    [[...READ_ONLY, ...OWNER_WRITTEN]],
+  );
+
+  const held = (table: string, grantee: string) =>
+    rows
+      .filter((r) => r.table_name === table && r.grantee === grantee)
+      .map((r) => r.privilege_type)
+      .sort();
+
+  // anon holds nothing anywhere. The link route reads no database at all, so
+  // there is no reason for a single grant to exist.
+  for (const table of [...READ_ONLY, ...OWNER_WRITTEN]) {
+    expect(held(table, "anon"), `anon on ${table}`).toEqual([]);
+  }
+
+  // Read-only to every client: the two writes go through definer functions.
+  for (const table of READ_ONLY) {
+    expect(held(table, "authenticated"), `authenticated on ${table}`).toEqual([
+      "SELECT",
+    ]);
+  }
+
+  // Owner-scoped and genuinely written by their owner — exactly four verbs.
+  for (const table of OWNER_WRITTEN) {
+    expect(held(table, "authenticated"), `authenticated on ${table}`).toEqual([
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE",
+    ]);
+  }
+}
