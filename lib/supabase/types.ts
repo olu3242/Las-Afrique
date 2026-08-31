@@ -273,6 +273,7 @@ export interface Database {
       referral_invitations: Table<ReferralInvitationRow>;
       referrals: Table<ReferralRow>;
       reward_entitlements: Table<RewardEntitlementRow>;
+      referral_invitation_attempts: Table<ReferralInvitationAttemptRow>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -312,6 +313,7 @@ export const TENANT_TABLES = [
   "referral_codes",
   "referral_invitations",
   "reward_entitlements",
+  "referral_invitation_attempts",
 ] as const;
 
 /** Tables that are public reference data rather than tenant-scoped. */
@@ -497,7 +499,11 @@ export interface ReferralProgramRow {
   name: string;
   qualification_predicate: ReferralQualificationPredicate;
   attribution_window_days: number;
-  invitation_rate_limit_per_day: number;
+  /**
+   * Attempts, not successes, and per rolling hour. A refused attempt counts —
+   * see `referral_invitation_attempts`. Approved in PR #19.
+   */
+  invitation_rate_limit_per_hour: number;
   /** Names which benefit applies. Never an amount, never a currency. */
   reward_policy_key: string;
   effective_from: string;
@@ -577,6 +583,21 @@ export interface RewardEntitlementRow {
 }
 
 /**
+ * One row per invitation attempt, kept whether or not an invitation resulted.
+ *
+ * The limit counts attempts rather than invitations, because a refused insert
+ * leaves no invitation and a refusal that costs nothing is a probe that costs
+ * nothing. Readable by the referrer, writable by nobody.
+ */
+export interface ReferralInvitationAttemptRow {
+  id: string;
+  user_id: string;
+  program_key: string;
+  attempted_at: string;
+  created_at: string;
+}
+
+/**
  * The dual-party table. Named separately because its access model is neither
  * single-owner nor membership-scoped, and folding it into either list would
  * have meant weakening what that list asserts.
@@ -588,6 +609,7 @@ export const REFERRAL_TENANT_TABLES = [
   "referral_codes",
   "referral_invitations",
   "reward_entitlements",
+  "referral_invitation_attempts",
 ] as const;
 
 /** Reference data added by Iteration 12. */

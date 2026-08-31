@@ -62,6 +62,7 @@ describe("migrations", () => {
       "0012_referrals.sql",
       "0013_referral_grants.sql",
       "0014_referral_code_provenance.sql",
+      "0015_referral_invitation_attempts.sql",
     ]);
   });
 

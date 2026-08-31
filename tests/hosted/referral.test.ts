@@ -59,7 +59,7 @@ describe("hosted referral", () => {
 
   it("1. exposes exactly one programme in force to a signed-in user", async () => {
     const response = await rest(
-      "referral_programs?select=key,qualification_predicate,attribution_window_days,invitation_rate_limit_per_day&effective_to=is.null",
+      "referral_programs?select=key,qualification_predicate,attribution_window_days,invitation_rate_limit_per_hour&effective_to=is.null",
       referrer.accessToken,
     );
     expect(response.status, await response.clone().text()).toBe(200);
@@ -69,7 +69,7 @@ describe("hosted referral", () => {
         key: "launch",
         qualification_predicate: "first_trip_created",
         attribution_window_days: 30,
-        invitation_rate_limit_per_day: 20,
+        invitation_rate_limit_per_hour: 10,
       },
     ]);
   });
@@ -304,6 +304,44 @@ describe("hosted referral", () => {
       const response = await rest(`${table}?select=id`, referrer.accessToken);
       expect(await response.json(), `${table} must stay private`).toEqual([]);
     }
+  });
+
+  it("12b. counts invitation attempts, and refuses the eleventh in an hour", async () => {
+    // The approved limit: 10 attempts per referrer per rolling hour, with
+    // refused attempts counting so probing cannot be free. Asserted against
+    // the real project, because the attempt row has to survive being written
+    // by its own request — which is the property a single local transaction
+    // can only model with a savepoint.
+    const outcomes: string[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const response = await rest(
+        "rpc/claim_referral_invitation_attempt",
+        stranger.accessToken,
+        { method: "POST", body: "{}" },
+      );
+      expect(response.status, await response.clone().text()).toBeLessThan(300);
+      const rows = (await response.json()) as Array<{ outcome: string }>;
+      outcomes.push(rows[0]?.outcome);
+    }
+
+    expect(outcomes.slice(0, 10).every((o) => o === "allowed")).toBe(true);
+    expect(outcomes[10]).toBe("rate_limited");
+
+    // And the caller cannot clear their own record to buy more.
+    const cleared = await rest(
+      "referral_invitation_attempts",
+      stranger.accessToken,
+      { method: "DELETE", headers: { Prefer: "return=representation" } },
+    );
+    const { rows: still } = await db.query<{ count: string }>(
+      `select count(*) as count from public.referral_invitation_attempts
+        where user_id = $1`,
+      [stranger.userId],
+    );
+    expect(
+      Number(still[0].count),
+      `attempts after a DELETE that answered ${cleared.status}`,
+    ).toBe(11);
   });
 
   it("13. refuses to re-point a qualified attribution", async () => {

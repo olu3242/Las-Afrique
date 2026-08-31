@@ -66,7 +66,8 @@ describe("referral", () => {
     it("is readable by a signed-in user", async () => {
       const rows = await asUser(db, kofi, async () => {
         const { rows } = await db.query(
-          `select key, qualification_predicate, attribution_window_days
+          `select key, qualification_predicate, attribution_window_days,
+                  invitation_rate_limit_per_hour
              from public.referral_programs where effective_to is null`,
         );
         return rows;
@@ -76,6 +77,7 @@ describe("referral", () => {
         key: "launch",
         qualification_predicate: "first_trip_created",
         attribution_window_days: 30,
+        invitation_rate_limit_per_hour: 10,
       });
     });
 
@@ -651,9 +653,104 @@ describe("referral", () => {
   // -------------------------------------------------------------------------
 
   describe("invitation flooding", () => {
-    it("refuses invitations past the programme's daily limit", async () => {
+    it("counts attempts, so a refused one is not free", async () => {
+      // The approved decision, and the half a row count cannot express: "10
+      // invitation attempts per referrer per rolling hour. Refused attempts
+      // count toward the limit so invalid-address probing cannot bypass it."
+      //
+      // The original implementation counted rows in referral_invitations. A
+      // refused insert leaves no row, so a prober could submit addresses
+      // indefinitely and learn from the refusals which ones a referrer had
+      // already invited.
+      const outcomes = await asUser(db, zainab, async () => {
+        const seen: string[] = [];
+        for (let i = 0; i < 11; i += 1) {
+          const { rows } = await db.query<{ outcome: string }>(
+            `select outcome from public.claim_referral_invitation_attempt()`,
+          );
+          seen.push(rows[0].outcome);
+        }
+        return seen;
+      });
+
+      expect(outcomes.slice(0, 10).every((o) => o === "allowed")).toBe(true);
+      expect(outcomes[10]).toBe("rate_limited");
+    });
+
+    it("charges an attempt even when the invitation itself is refused", async () => {
+      const used = await asUser(db, zainab, async () => {
+        // A claim, then an insert that the duplicate index refuses.
+        await db.query(`select public.claim_referral_invitation_attempt()`);
+        await db.query(
+          `insert into public.referral_invitations
+             (user_id, program_key, email, token_hash)
+           values ($1, 'launch', 'probe@elsewhere.test', 'probe-a')`,
+          [zainab],
+        );
+
+        await db.query(`select public.claim_referral_invitation_attempt()`);
+
+        // The refused insert, inside a savepoint.
+        //
+        // In the running app the claim and the insert are separate requests
+        // and therefore separate transactions, so a refused insert cannot take
+        // the attempt with it. This harness runs one transaction per `asUser`,
+        // where a failed statement aborts everything after it — the savepoint
+        // is what reproduces the production boundary rather than testing an
+        // artefact of the harness.
+        await db.query("savepoint probe");
+        await expect(
+          db.query(
+            `insert into public.referral_invitations
+               (user_id, program_key, email, token_hash)
+             values ($1, 'launch', 'probe@elsewhere.test', 'probe-b')`,
+            [zainab],
+          ),
+        ).rejects.toThrow(/one_pending_per_address/);
+        await db.query("rollback to savepoint probe");
+
+        // The attempt claimed before it is still on the record.
+        const { rows } = await db.query<{ count: string }>(
+          `select count(*) as count from public.referral_invitation_attempts
+            where user_id = $1`,
+          [zainab],
+        );
+        return Number(rows[0].count);
+      });
+
+      expect(used).toBeGreaterThanOrEqual(2);
+    });
+
+    it("keeps a member's attempts to themselves, and unwritable", async () => {
+      await db.query(
+        `insert into public.referral_invitation_attempts (user_id, program_key)
+         values ($1, 'launch')`,
+        [zainab],
+      );
+
+      const seen = await asUser(db, ama, async () => {
+        const { rows } = await db.query(
+          `select id from public.referral_invitation_attempts`,
+        );
+        return rows;
+      });
+      expect(seen).toEqual([]);
+
+      // A rate limit whose rows the limited party can delete is not one.
       await asUser(db, zainab, async () => {
-        for (let i = 0; i < 20; i += 1) {
+        await expect(
+          db.query(`delete from public.referral_invitation_attempts`),
+        ).rejects.toThrow(/permission denied|row-level security/);
+      });
+
+      await db.query(`delete from public.referral_invitation_attempts`);
+    });
+
+    it("still bounds a direct insert that claimed no attempt", async () => {
+      // The trigger is no longer the primary gate, but it must still hold for
+      // any path that reaches the table without going through the claim.
+      await asUser(db, zainab, async () => {
+        for (let i = 0; i < 10; i += 1) {
           await db.query(
             `insert into public.referral_invitations
                (user_id, program_key, email, token_hash)
@@ -665,7 +762,7 @@ describe("referral", () => {
           db.query(
             `insert into public.referral_invitations
                (user_id, program_key, email, token_hash)
-             values ($1, 'launch', 'onemore@elsewhere.test', 'flood-21')`,
+             values ($1, 'launch', 'onemore@elsewhere.test', 'flood-11')`,
             [zainab],
           ),
         ).rejects.toThrow(/referral_invitation_rate_limit/);

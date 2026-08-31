@@ -449,7 +449,14 @@ export async function expectOneProgramInForce(db: Client): Promise<void> {
  * surplus grant of it is the one that matters most.
  */
 export async function expectReferralGrants(db: Client): Promise<void> {
-  const READ_ONLY = ["referrals", "reward_entitlements", "referral_programs"];
+  const READ_ONLY = [
+    "referrals",
+    "reward_entitlements",
+    "referral_programs",
+    // Attempts are written only by claim_referral_invitation_attempt. A rate
+    // limit whose rows a caller can delete is not a rate limit.
+    "referral_invitation_attempts",
+  ];
   const OWNER_WRITTEN = ["referral_codes", "referral_invitations"];
 
   const { rows } = await db.query<{

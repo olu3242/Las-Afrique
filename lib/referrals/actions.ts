@@ -14,7 +14,11 @@ import {
 } from "./attribution";
 import { buildReferralEvent, nullEventSink } from "./events";
 import { actorRef, currentProgram, ensureOwnReferralCode } from "./service";
-import { validateReferralInvite, type InviteField } from "./validation";
+import {
+  isPlausibleEmail,
+  validateReferralInvite,
+  type InviteField,
+} from "./validation";
 
 /**
  * Referral mutations.
@@ -92,6 +96,32 @@ export async function inviteByEmail(
   const { supabase, user } = await requireUser();
 
   const email = field(form, "email");
+
+  // The rate limit counts attempts, not invitations — approved decision 4, so
+  // that a refused attempt costs the same as an accepted one and probing for
+  // which addresses are already invited cannot be done for free.
+  //
+  // Claimed before validation that consults the database and before the insert,
+  // and deliberately *after* the structural check: a well-formed address that
+  // is then refused counts, a typo does not. The claim is its own request, so
+  // it survives whatever the insert does next.
+  if (isPlausibleEmail(email)) {
+    const { data: claim } = await supabase.rpc(
+      "claim_referral_invitation_attempt",
+    );
+    const outcome = (
+      claim as Array<{ outcome: string; allowance: number }> | null
+    )?.[0];
+
+    if (outcome?.outcome === "rate_limited") {
+      return {
+        status: "error",
+        message: `You can send ${outcome.allowance} invitations an hour. Try again shortly.`,
+        values: { email: email ?? "" },
+      };
+    }
+  }
+
   const errors = validateReferralInvite({ email, ownEmail: user.email ?? null });
   if (Object.keys(errors).length > 0) {
     return { status: "error", errors, values: { email: email ?? "" } };
@@ -114,9 +144,11 @@ export async function inviteByEmail(
     // Two refusals a person can act on, told apart by the constraint that
     // fired rather than by re-deriving the rule here.
     if (error.message.includes("referral_invitation_rate_limit")) {
+      // The trigger, not the attempt ceiling — reachable only if something
+      // wrote here without claiming an attempt first.
       return {
         status: "error",
-        message: `You can send ${program.invitation_rate_limit_per_day} invitations a day. Try again tomorrow.`,
+        message: `You can send ${program.invitation_rate_limit_per_hour} invitations an hour. Try again shortly.`,
         values: { email: email ?? "" },
       };
     }

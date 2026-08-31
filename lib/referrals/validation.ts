@@ -19,6 +19,22 @@ export type InviteField = "email";
 /** A plausible address, checked structurally. Delivery proves the rest. */
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Whether a submission is worth spending rate-limit allowance on.
+ *
+ * The approved limit counts *attempts*, including refused ones, so that
+ * probing cannot be free. But a blank field or a typo is not probing, and
+ * burning someone's hourly allowance on a mistyped address would make an
+ * anti-abuse ceiling into a usability trap.
+ *
+ * So the line is drawn here: anything that could plausibly reach the database
+ * and be refused there — a well-formed address, including one's own — counts.
+ * Anything the form itself rejects without asking the database does not.
+ */
+export function isPlausibleEmail(value: string | null): boolean {
+  return typeof value === "string" && value.length <= 254 && EMAIL.test(value);
+}
+
 export function validateReferralInvite(input: {
   email: string | null;
   /** The signed-in referrer's own address, to catch the obvious case early. */

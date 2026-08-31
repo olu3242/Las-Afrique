@@ -387,25 +387,40 @@ proposal.
 | 1 | Qualification predicate | First trip created | `referral_programs.qualification_predicate` |
 | 2 | Attribution window | 30 days | `referral_programs.attribution_window_days` |
 | 3 | Attribution model | Last touch within the window | The touch cookie, overwritten per resolution |
-| 4 | Invitation rate limit | **20 per referrer per day — see below** | `referral_programs.invitation_rate_limit_per_day` |
+| 4 | Invitation rate limit | **10 attempts per referrer per rolling hour**, refused attempts included | `referral_programs.invitation_rate_limit_per_hour` and `referral_invitation_attempts` |
 | 5 | Disposable addresses | Not policed | No blocklist exists, by design |
-| 6 | Analytics destination | **None — shape only, see below** | `lib/referrals/events.ts` |
+| 6 | Analytics destination | **None — event contract only, no sink** | `lib/referrals/events.ts` |
 
-**Decisions 4 and 6 named a proposed value this document did not contain.**
+**Decisions 4 and 6 were resolved separately, in `ITERATION-12-DECISIONS.md`.**
 
 §6 marked the rate limit `[DECISION: limit]` with no number, and §10 stated
-that no analytics sink exists and defined shape only. Rather than block the
-whole engine on a constant, both were implemented so that the value is data
-rather than a code change:
+that no analytics sink exists. This engine was first built with a limit of 20
+per rolling day — a number this codebase invented to avoid blocking on a
+constant, and flagged as invented at the time.
 
-- **The rate limit is a programme column**, seeded at **20 per referrer per
-  day**. It is a starting value chosen so that a person inviting their family
-  is never impeded and a script is. Changing it is a programme version — end
-  the current one, insert the next — not an edit and not a deploy.
-- **Analytics has no destination.** Events are built, validated and discarded
-  by `nullEventSink`. That is not a mock standing in for a dependency that
-  exists; there is no analytics service in this codebase. When one is chosen it
-  implements `ReferralEventSink` and the shapes are already fixed and tested.
+The product owner's actual decision (PR #19) is **10 invitation attempts per
+referrer per rolling hour, with refused attempts counting so that
+invalid-address probing cannot bypass the limit**. Migration 0015 implements
+it, and the second half is the part a row count could not express:
+
+- The original guard counted rows in `referral_invitations`. A refused insert
+  leaves no row, so a refusal cost a prober nothing — they could submit
+  addresses indefinitely and learn from the refusals which ones a referrer had
+  already invited. That is the bypass the decision names.
+- Attempts are now recorded in `referral_invitation_attempts` by their own
+  request, before the invitation insert is tried, so a refusal cannot roll the
+  attempt back. The table is readable by the referrer and writable by nobody:
+  a rate limit whose rows the limited party can delete is not a limit.
+- The structural line: a well-formed address that the database then refuses
+  counts; a blank field or a typo the form rejects does not. Otherwise an
+  anti-abuse ceiling becomes a usability trap for someone who mistyped.
+
+**Analytics has no destination**, which matches the decision exactly — the
+event contract is preserved, no vendor is invented. Events are built, validated
+and discarded by `nullEventSink`. That is not a mock standing in for a
+dependency that exists; there is no analytics service in this codebase. When one
+is chosen it implements `ReferralEventSink` and the shapes are already fixed
+and tested.
 
 ### Where the implementation refined the proposal
 
