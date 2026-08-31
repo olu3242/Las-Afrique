@@ -233,10 +233,18 @@ test.describe("referral, signed in", () => {
     // The assertion the whole engine rests on, and the one that cannot pass by
     // accident: the referrer holds a qualified referral and still gets nothing
     // of that person's trip.
-    await page.goto(tripUrl);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      /not found/i,
-    );
+    // Asserted on the response status, the idiom golden-path.spec.ts and
+    // trip-onboarding.spec.ts already use for this exact boundary. It is the
+    // stronger form: a status cannot pass because the wording of an error page
+    // happened to match. Matching on text is what failed here — Next's
+    // not-found h1 is literally "404", and the boundary had held perfectly.
+    const refused = await page.goto(tripUrl);
+    expect(
+      refused?.status(),
+      "the referred user's trip must 404 for their referrer",
+    ).toBe(404);
+    // And nothing of the trip leaked into whatever was rendered.
+    await expect(page.locator("body")).not.toContainText("Lagos");
 
     // Nor anything about them on the referral page itself.
     await openReferrals(page);
