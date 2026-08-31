@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# Take Me Home — local certification topology.
+#
+# Two services, both of this repository's own making:
+#
+#   app       the production build, served exactly as `npm run start` serves it
+#   certify   the suites, run against that build
+#
+# The database, auth, REST and storage services are NOT defined here. They are
+# the supported Supabase local stack and the Supabase CLI owns their lifecycle
+# (`npm run docker:start`). Re-declaring GoTrue and PostgREST in this file
+# would be a second, parallel persistence architecture that drifts from the
+# supported one, and the drift would be invisible until a hosted run failed.
+#
+# Both services run on the host network, so `127.0.0.1:54321` names the same
+# Supabase to the application, the browser and the test runner. See the comment
+# on `app` below — the alternative was tried, and the browser journeys failed
+# on it for a reason worth keeping written down.
+# ---------------------------------------------------------------------------
+
+name: takemehome-certify
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        # Public by contract. Next substitutes NEXT_PUBLIC_* at build time in
+        # server code as well as client code, so these cannot be deferred to
+        # run time — and both are safe to bake in: the publishable key is
+        # protected by row-level security, not by secrecy.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?run npm run docker:start first}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?run npm run docker:start first}
+    image: takemehome-app:local
+    init: true
+    # ---------------------------------------------------------------------
+    # Host networking, so that one address means one thing.
+    #
+    # An earlier version put the app on the bridge network with the internal
+    # hostname `supabase_kong_Las-Afrique:8000`, reasoning that nothing in the
+    # browser bundle talks to Supabase directly. That reasoning was wrong, and
+    # the browser journeys found it in their first run against this stack:
+    #
+    #   getaddrinfo ENOTFOUND supabase_kong_las-afrique
+    #
+    # The vault builds a **signed storage URL on the server** and hands it to
+    # the browser to fetch. So a Supabase URL does reach the browser — not as
+    # an import of lib/supabase/client.ts, but as a link. Auditing imports
+    # could never have caught it.
+    #
+    # The real invariant is not "no client module imports the browser client".
+    # It is: any Supabase URL the server hands out must resolve for whoever
+    # receives it. Two address spaces cannot satisfy that without the server
+    # knowing which audience each URL is for, which is a distinction the
+    # application has no reason to carry. One address space removes the
+    # question: 127.0.0.1:54321 is the same stack to the app, the browser and
+    # the test runner alike.
+    #
+    # On Docker Desktop, host networking must be enabled in settings
+    # (Resources → Network). On Linux it is the default capability.
+    # ---------------------------------------------------------------------
+    network_mode: host
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Run time only, never a build argument: this key bypasses row-level
+      # security and a build argument survives in image history.
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?run npm run docker:start first}
+    restart: "no"
+
+  certify:
+    build:
+      context: .
+      target: certify
+    image: takemehome-certify:local
+    init: true
+    # Same address space as the app, for the same reason: the journeys follow
+    # links the application generates, and a runner that resolved those names
+    # differently from the browser would be testing a different application.
+    network_mode: host
+    environment:
+      CI: "1"
+      E2E_BASE_URL: ${E2E_BASE_URL:-http://127.0.0.1:3000}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?run npm run docker:start first}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?run npm run docker:start first}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?run npm run docker:start first}
+      # The suites build their own throwaway databases on this cluster, so the
+      # migration and policy tests run against the same PostgreSQL major
+      # version the hosted project runs.
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:?run npm run docker:start first}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: "no"

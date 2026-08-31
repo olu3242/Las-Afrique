@@ -1,0 +1,91 @@
+name: Docker certification
+
+# ---------------------------------------------------------------------------
+# LOCAL_DOCKER_CERTIFICATION
+#
+# The pre-certification tier: migrations from empty, policies and grants, and
+# the browser journeys, against the supported Supabase local stack.
+#
+# This is NOT hosted certification. It runs entirely on the runner, holds no
+# project credentials, and cannot say anything about whether the hosted project
+# carries these migrations. hosted-db.yml is the gate that certifies that, and
+# this workflow neither replaces nor weakens it — see
+# docs/DOCKER-CERTIFICATION.md.
+#
+# Deliberately without an `environment:` and without a single secret. A tier
+# whose whole claim is that it needs no hosted project should not be able to
+# reach one even by accident.
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-certification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  local-docker-certification:
+    name: Local Docker certification
+    runs-on: ubuntu-latest
+    # The stack pulls and starts a dozen containers, then runs every suite
+    # twice from an empty database.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Docker and compose ship on ubuntu-latest; asserted rather than assumed,
+      # so a runner image change fails here with a clear reason instead of
+      # somewhere further in.
+      - name: Docker is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Start the local Supabase stack
+        run: npm run docker:start
+
+      - name: Build the application and certification images
+        run: npm run docker:build
+
+      # ---------------------------------------------------------------------
+      # Two full passes, the second from an empty database. One successful
+      # stateful run proves a runner got lucky; the reset between them is what
+      # makes this a reproducibility check.
+      # ---------------------------------------------------------------------
+      - name: Certify — two clean runs
+        run: npm run certify:docker
+
+      - name: Stack state on failure
+        if: failure()
+        run: |
+          npm run docker:status || true
+          docker compose --env-file .env.docker logs --tail 200 app || true
+          docker logs --tail 200 supabase_db_Las-Afrique || true
+          docker logs --tail 200 supabase_rest_Las-Afrique || true
+
+      - name: Upload the browser report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        run: npm run docker:stop || true

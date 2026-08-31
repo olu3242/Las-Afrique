@@ -7,9 +7,19 @@
  * schema. `POST /auth/v1/admin/users` with `email_confirm` is the supported
  * way to get a usable account without sending mail.
  *
- * The service-role key is fetched at run time from the Management API with the
- * access token CI already holds. It is not a stored secret and is never
- * printed.
+ * The privileged key is obtained one of two ways, and which one is available
+ * decides nothing else about the run:
+ *
+ *   hosted  fetched at run time from the Management API with the access token
+ *           CI already holds. Not a stored secret, and never printed.
+ *   local   supplied directly, because the Supabase CLI's local stack has no
+ *           Management API behind it and its service key is a static
+ *           development value with no hosted project to reach.
+ *
+ * The direct key is preferred when present. That ordering is deliberate: a
+ * developer who has both a local stack and hosted credentials exported is
+ * running against the local stack, and a run that silently reached for the
+ * hosted project instead would be the worst possible surprise.
  */
 
 export interface ProbeUser {
@@ -21,8 +31,16 @@ export interface ProbeUser {
 export interface AdminConfig {
   supabaseUrl: string;
   publishableKey: string;
+  /** Empty on a local stack, which has no hosted project to reference. */
   projectRef: string;
+  /** Empty on a local stack, which has no Management API to authenticate to. */
   accessToken: string;
+  /**
+   * A privileged key supplied directly rather than fetched. Set for the local
+   * stack; absent for the hosted project, where the Management API is the
+   * supported route and no service-role key is stored anywhere.
+   */
+  directSecretKey?: string;
 }
 
 /**
@@ -40,20 +58,51 @@ export function adminConfig(): AdminConfig | { missing: string[] } {
   const projectRef = process.env.SUPABASE_PROJECT_REF || "";
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN || "";
 
+  // The local stack's key, if one was supplied. Named for what it does rather
+  // than for where it came from: `lib/env.ts` accepts either generation, and
+  // so does this.
+  const directSecretKey =
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
   const missing: string[] = [];
   if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL");
   if (!publishableKey) missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-  if (!projectRef) missing.push("SUPABASE_PROJECT_REF");
-  if (!accessToken) missing.push("SUPABASE_ACCESS_TOKEN");
+
+  // Two ways to be privileged, and a run needs exactly one of them. Reported
+  // as one requirement rather than four missing names, so a developer running
+  // locally is not told to go and find a hosted access token they should not
+  // have.
+  if (!directSecretKey) {
+    if (!projectRef) missing.push("SUPABASE_PROJECT_REF");
+    if (!accessToken) missing.push("SUPABASE_ACCESS_TOKEN");
+  }
 
   if (missing.length > 0) return { missing };
-  return { supabaseUrl, publishableKey, projectRef, accessToken };
+  return {
+    supabaseUrl,
+    publishableKey,
+    projectRef,
+    accessToken,
+    directSecretKey: directSecretKey || undefined,
+  };
 }
 
 const PROBE_DOMAIN =
   process.env.HOSTED_PROBE_EMAIL_DOMAIN || "takemehome-probe.dev";
 
 async function serviceRoleKey(config: AdminConfig): Promise<string> {
+  if (config.directSecretKey) return config.directSecretKey;
+
+  if (!config.projectRef || !config.accessToken) {
+    throw new Error(
+      "No privileged key available: supply SUPABASE_SECRET_KEY for a local " +
+        "stack, or SUPABASE_PROJECT_REF and SUPABASE_ACCESS_TOKEN for the " +
+        "hosted project.",
+    );
+  }
+
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${config.projectRef}/api-keys`,
     { headers: { Authorization: `Bearer ${config.accessToken}` } },
