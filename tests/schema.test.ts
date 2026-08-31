@@ -11,14 +11,22 @@ import {
   GROUP_ROOT_TABLE,
   GROUP_TABLES,
   REFERENCE_TABLES,
+  REFERRAL_DUAL_PARTY_TABLES,
+  REFERRAL_REFERENCE_TABLES,
+  REFERRAL_TENANT_TABLES,
   TENANT_TABLES,
 } from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
   expectCountryProvenanceConstraints,
+  expectDualPartyReferralPolicies,
   expectGroupHelperFunctions,
   expectGroupTableInvariants,
   expectNoCustodyColumns,
+  expectNoRewardCustodyColumns,
+  expectOneProgramInForce,
+  expectReferralGrants,
+  expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
 } from "./support/schema-queries";
 
@@ -51,6 +59,10 @@ describe("migrations", () => {
       "0009_vault_storage.sql",
       "0010_reminders.sql",
       "0011_group_coordination.sql",
+      "0012_referrals.sql",
+      "0013_referral_grants.sql",
+      "0014_referral_code_provenance.sql",
+      "0015_referral_invitation_attempts.sql",
     ]);
   });
 
@@ -297,6 +309,7 @@ describe("migrations", () => {
       ...TENANT_TABLES,
       ...REFERENCE_TABLES,
       ...GROUP_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
       GROUP_ROOT_TABLE,
     ].sort();
     expect(actual.sort()).toEqual(expected);
@@ -454,6 +467,79 @@ describe("migrations", () => {
         row.qual ?? "",
         `${row.tablename} policy must not consult group membership`,
       ).not.toMatch(/is_group_member|can_coordinate|group_/i);
+    }
+  });
+
+  // --- referral (Iteration 12) -------------------------------------------
+
+  it("makes referrals readable by both parties and writable by neither", async () => {
+    await expectDualPartyReferralPolicies(db);
+  });
+
+  it("makes the referral definer functions pinned, and normalise_email immutable", async () => {
+    await expectReferralHelperFunctions(db);
+  });
+
+  it("permits exactly one referral programme in force", async () => {
+    await expectOneProgramInForce(db);
+  });
+
+  it("keeps custody of money out of the referral schema", async () => {
+    // The invariant PRD §8 states in prose. An entitlement records that
+    // something was earned under a named policy; the moment a column here
+    // carries an amount, the product is recording a liability.
+    await expectNoRewardCustodyColumns(db, [
+      ...REFERRAL_TENANT_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
+      ...REFERRAL_REFERENCE_TABLES,
+    ]);
+  });
+
+  it("grants a hosted project's authenticated role exactly what each referral table needs", async () => {
+    // The assertion that would have caught the defect 0013 fixes, and the
+    // reason it did not exist: a bare cluster has no ALTER DEFAULT PRIVILEGES,
+    // so adding a grant without revoking the surplus looks identical to
+    // getting it right. Reproduced here, and run through the same helper the
+    // hosted tier runs against the real project.
+    const name = "tmh_test_referral_grants";
+    const withDefaults = await createMigratedDatabase(
+      name,
+      "alter default privileges in schema public grant all on tables to anon, authenticated;",
+    );
+
+    try {
+      await expectReferralGrants(withDefaults);
+    } finally {
+      await withDefaults.end();
+      await dropDatabase(name);
+    }
+  });
+
+  it("leaves the referral programme rules with no write policy", async () => {
+    const { rows } = await db.query<{ cmd: string }>(
+      `select cmd from pg_policies
+       where schemaname = 'public' and tablename = 'referral_programs'`,
+    );
+    expect(rows.map((r) => r.cmd)).toEqual(["SELECT"]);
+  });
+
+  it("leaves the owner-scoped tables untouched by referral policies", async () => {
+    // The same property Iteration 11 had to hold. Referral adds a way for two
+    // people to share one row; it must not have added a second way into a
+    // private table.
+    const { rows } = await db.query<{ tablename: string; qual: string | null }>(
+      `select tablename, qual from pg_policies
+        where schemaname = 'public'
+          and tablename in ('trips', 'travelers', 'document_records',
+                            'cost_estimates', 'savings_plans', 'vault_files')`,
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        row.qual ?? "",
+        `${row.tablename} policy must not consult a referral`,
+      ).not.toMatch(/referr|reward_/i);
     }
   });
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { field, type ActionState } from "@/lib/forms";
+import { attributeSignup } from "@/lib/referrals/actions";
 import { MIN_PASSWORD_LENGTH, safeDestination } from "./policy";
 
 export type AuthField = "email" | "password" | "displayName";
@@ -66,6 +67,12 @@ export async function signUp(
     };
   }
 
+  // A signup that arrived through a referral link is attributed here, once a
+  // session exists — the definer function needs a verified caller, and there
+  // is no session before this point. It never throws and never blocks: a
+  // referral that cannot be attributed must not cost someone their account.
+  await attributeSignup();
+
   revalidatePath("/", "layout");
   redirect(next);
 }
@@ -101,6 +108,13 @@ export async function signIn(
       values: { email: email ?? "" },
     };
   }
+
+  // Also here, and not as a belt-and-braces duplicate. A project with email
+  // confirmation enabled returns no session from signUp, so this is the first
+  // point at which a referral *can* be attributed for those accounts. It is
+  // safe to attempt on every sign-in because attribute_referral refuses a
+  // touch that predates the account.
+  await attributeSignup();
 
   revalidatePath("/", "layout");
   redirect(next);

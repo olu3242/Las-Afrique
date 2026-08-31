@@ -5,14 +5,22 @@ import {
   GROUP_ROOT_TABLE,
   GROUP_TABLES,
   REFERENCE_TABLES,
+  REFERRAL_DUAL_PARTY_TABLES,
+  REFERRAL_REFERENCE_TABLES,
+  REFERRAL_TENANT_TABLES,
   TENANT_TABLES,
 } from "@/lib/supabase/types";
 import {
   expectProfileTrigger,
   expectCountryProvenanceConstraints,
+  expectDualPartyReferralPolicies,
   expectGroupHelperFunctions,
   expectGroupTableInvariants,
   expectNoCustodyColumns,
+  expectNoRewardCustodyColumns,
+  expectOneProgramInForce,
+  expectReferralGrants,
+  expectReferralHelperFunctions,
   expectTenantConsistentTripKeys,
 } from "../support/schema-queries";
 
@@ -61,6 +69,7 @@ describe("hosted schema", () => {
       ...TENANT_TABLES,
       ...REFERENCE_TABLES,
       ...GROUP_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
       GROUP_ROOT_TABLE,
     ].sort();
     expect(actual).toEqual(expected);
@@ -137,6 +146,57 @@ describe("hosted schema", () => {
         `${row.tablename} policy must not consult group membership`,
       ).not.toMatch(/is_group_member|can_coordinate|group_/i);
     }
+  });
+
+  // --- referral (Iteration 12) -------------------------------------------
+  //
+  // The same shared helpers again, for the reason hosted run 29 established:
+  // adding an assertion to the local tier and not this one is the drift these
+  // helpers exist to prevent, and the local tier can be green while the
+  // project has none of it.
+
+  it("makes referrals readable by both parties and writable by neither", async () => {
+    await expectDualPartyReferralPolicies(db);
+  });
+
+  it("makes the referral definer functions pinned, and normalise_email immutable", async () => {
+    await expectReferralHelperFunctions(db);
+  });
+
+  it("has exactly one referral programme in force", async () => {
+    await expectOneProgramInForce(db);
+  });
+
+  it("keeps custody of money out of the referral schema", async () => {
+    await expectNoRewardCustodyColumns(db, [
+      ...REFERRAL_TENANT_TABLES,
+      ...REFERRAL_DUAL_PARTY_TABLES,
+      ...REFERRAL_REFERENCE_TABLES,
+    ]);
+  });
+
+  it("leaves the owner-scoped tables untouched by referral policies", async () => {
+    const { rows } = await db.query<{ tablename: string; qual: string | null }>(
+      `select tablename, qual from pg_policies
+        where schemaname = 'public'
+          and tablename in ('trips', 'travelers', 'document_records',
+                            'cost_estimates', 'savings_plans', 'vault_files')`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(
+        row.qual ?? "",
+        `${row.tablename} policy must not consult a referral`,
+      ).not.toMatch(/referr|reward_/i);
+    }
+  });
+
+  it("grants each referral table exactly what it needs, and nothing more", async () => {
+    // The same helper the local tier runs against a database built with a
+    // hosted project's default privileges. Here it runs against the project
+    // itself, which is the only place the surplus those defaults add could
+    // actually have survived — and did, until migration 0013.
+    await expectReferralGrants(db);
   });
 
   it("leaves country reference data readable but not writable", async () => {

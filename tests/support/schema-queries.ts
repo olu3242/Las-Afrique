@@ -291,3 +291,213 @@ export async function expectNoCustodyColumns(
     "group tables must not imply custody of funds",
   ).toEqual([]);
 }
+
+/**
+ * The referral engine's non-custodial invariant (Iteration 12).
+ *
+ * PRD §8: the product does not hold money. A reward entitlement records that
+ * something was *earned under a named policy*, never that Take Me Home owes
+ * anybody anything, and the difference between those two is one column.
+ *
+ * `owed` is in the pattern here and was absent from the group version, because
+ * this is the engine where somebody would plausibly add it.
+ */
+export async function expectNoRewardCustodyColumns(
+  db: Client,
+  tables: readonly string[],
+): Promise<void> {
+  const { rows } = await db.query<{ table_name: string; column_name: string }>(
+    `select table_name, column_name from information_schema.columns
+      where table_schema = 'public' and table_name = any($1)`,
+    [[...tables]],
+  );
+
+  const forbidden =
+    /balance|escrow|wallet|payout|settle|transfer|ledger|owed|held_|amount|currency/i;
+  const offenders = rows.filter((r) => forbidden.test(r.column_name));
+  expect(
+    offenders.map((r) => `${r.table_name}.${r.column_name}`),
+    "referral tables must not imply custody of funds",
+  ).toEqual([]);
+}
+
+/**
+ * `referrals` is readable by both parties and writable by neither.
+ *
+ * The write refusal is stated as explicit `false` policies rather than left to
+ * absent ones. Both refuse, but only one of them is visible in the schema, and
+ * an absent policy is indistinguishable from a policy somebody forgot.
+ */
+export async function expectDualPartyReferralPolicies(db: Client): Promise<void> {
+  const { rows } = await db.query<{
+    policyname: string;
+    cmd: string;
+    qual: string | null;
+    with_check: string | null;
+  }>(
+    `select policyname, cmd, qual, with_check from pg_policies
+      where schemaname = 'public' and tablename = 'referrals'`,
+  );
+
+  const verbs = new Set(rows.map((r) => r.cmd));
+  for (const verb of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+    expect(verbs, `referrals needs a ${verb} policy`).toContain(verb);
+  }
+
+  const select = rows.find((r) => r.cmd === "SELECT");
+  expect(select?.qual ?? "", "referrals must be readable by both parties")
+    .toMatch(/referrer_id/);
+  expect(select?.qual ?? "").toMatch(/referred_user_id/);
+
+  for (const cmd of ["INSERT", "UPDATE", "DELETE"]) {
+    const policy = rows.find((r) => r.cmd === cmd);
+    const predicate = `${policy?.qual ?? ""}${policy?.with_check ?? ""}`;
+    expect(
+      predicate,
+      `referrals ${cmd} must be refused outright — writes go through the definer functions`,
+    ).toMatch(/false/);
+  }
+}
+
+/**
+ * The referral definer functions must be security definer with a pinned
+ * search_path — the same two properties the group helpers need, for the same
+ * two reasons: definer is what lets them write rows the caller may not, and an
+ * empty search_path is what stops a schema earlier on the caller's path from
+ * substituting a different table underneath one.
+ */
+export async function expectReferralHelperFunctions(db: Client): Promise<void> {
+  const { rows } = await db.query<{
+    proname: string;
+    prosecdef: boolean;
+    proconfig: string[] | null;
+  }>(
+    `select proname, prosecdef, proconfig from pg_proc
+      where pronamespace = 'public'::regnamespace
+        and proname in ('attribute_referral', 'evaluate_referral_qualification',
+                        'guard_referral_invitation_rate',
+                        'guard_referral_immutability', 'normalise_email')`,
+  );
+
+  for (const name of [
+    "attribute_referral",
+    "evaluate_referral_qualification",
+    "guard_referral_invitation_rate",
+    "guard_referral_immutability",
+  ]) {
+    const fn = rows.find((r) => r.proname === name);
+    expect(fn, `${name} should exist`).toBeDefined();
+    expect(fn?.prosecdef, `${name} must be security definer`).toBe(true);
+    expect(fn?.proconfig ?? [], `${name} must pin search_path`).toContain(
+      'search_path=""',
+    );
+  }
+
+  // normalise_email is not definer — it reads nothing. It must be immutable,
+  // because a unique index and a generated column both depend on it.
+  const normalise = rows.find((r) => r.proname === "normalise_email");
+  expect(normalise, "normalise_email should exist").toBeDefined();
+  const { rows: volatility } = await db.query<{ provolatile: string }>(
+    `select provolatile from pg_proc
+      where proname = 'normalise_email' and pronamespace = 'public'::regnamespace`,
+  );
+  expect(volatility[0]?.provolatile, "normalise_email must be immutable").toBe("i");
+}
+
+/**
+ * Exactly one referral programme may be in force.
+ *
+ * Without this, "the current programme" becomes a judgement about which of
+ * several overlapping rows applies, and an entitlement earned under one could
+ * be read back against another.
+ */
+export async function expectOneProgramInForce(db: Client): Promise<void> {
+  const { rows } = await db.query<{ indexdef: string }>(
+    `select indexdef from pg_indexes
+      where schemaname = 'public' and tablename = 'referral_programs'
+        and indexname = 'referral_programs_one_in_force'`,
+  );
+  expect(rows, "referral_programs_one_in_force should exist").toHaveLength(1);
+  expect(rows[0].indexdef).toMatch(/UNIQUE/i);
+  expect(rows[0].indexdef).toMatch(/effective_to IS NULL/i);
+
+  const { rows: inForce } = await db.query<{ count: string }>(
+    `select count(*) as count from public.referral_programs
+      where effective_to is null`,
+  );
+  expect(inForce[0].count).toBe("1");
+}
+
+/**
+ * Exactly what each referral table grants, and to whom.
+ *
+ * Shared because of the defect it exists to catch. Migration 0012 revoked
+ * `anon` and then *added* the grants `authenticated` needs — but adding a
+ * grant does not remove one, and a hosted project's ALTER DEFAULT PRIVILEGES
+ * had already granted ALL on every new table. So `authenticated` kept INSERT,
+ * UPDATE and DELETE on `referrals` and `reward_entitlements`, which no client
+ * may write, and on `referral_programs`, which is reference data.
+ *
+ * A bare local cluster has no default privileges, so the local tier could not
+ * see it: the surplus simply was not there to find. The local caller therefore
+ * runs this against a database built *with* those defaults, and the hosted
+ * caller runs it against the real project. Same assertion, both tiers — the
+ * arrangement that stops the next table repeating this.
+ *
+ * TRUNCATE is called out in the expectations because row-level security does
+ * not apply to it at all. It is the one verb no policy can contain, so a
+ * surplus grant of it is the one that matters most.
+ */
+export async function expectReferralGrants(db: Client): Promise<void> {
+  const READ_ONLY = [
+    "referrals",
+    "reward_entitlements",
+    "referral_programs",
+    // Attempts are written only by claim_referral_invitation_attempt. A rate
+    // limit whose rows a caller can delete is not a rate limit.
+    "referral_invitation_attempts",
+  ];
+  const OWNER_WRITTEN = ["referral_codes", "referral_invitations"];
+
+  const { rows } = await db.query<{
+    table_name: string;
+    grantee: string;
+    privilege_type: string;
+  }>(
+    `select table_name, grantee, privilege_type
+       from information_schema.role_table_grants
+      where table_schema = 'public'
+        and grantee in ('anon', 'authenticated')
+        and table_name = any($1)`,
+    [[...READ_ONLY, ...OWNER_WRITTEN]],
+  );
+
+  const held = (table: string, grantee: string) =>
+    rows
+      .filter((r) => r.table_name === table && r.grantee === grantee)
+      .map((r) => r.privilege_type)
+      .sort();
+
+  // anon holds nothing anywhere. The link route reads no database at all, so
+  // there is no reason for a single grant to exist.
+  for (const table of [...READ_ONLY, ...OWNER_WRITTEN]) {
+    expect(held(table, "anon"), `anon on ${table}`).toEqual([]);
+  }
+
+  // Read-only to every client: the two writes go through definer functions.
+  for (const table of READ_ONLY) {
+    expect(held(table, "authenticated"), `authenticated on ${table}`).toEqual([
+      "SELECT",
+    ]);
+  }
+
+  // Owner-scoped and genuinely written by their owner — exactly four verbs.
+  for (const table of OWNER_WRITTEN) {
+    expect(held(table, "authenticated"), `authenticated on ${table}`).toEqual([
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE",
+    ]);
+  }
+}

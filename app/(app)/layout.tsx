@@ -32,6 +32,12 @@ export default function AppLayout({
             >
               Trips
             </Link>
+            <Link
+              href="/referrals"
+              className="inline-block py-2 text-sm text-ivory/70 transition-colors hover:text-ivory"
+            >
+              Referrals
+            </Link>
             {/*
               A POST, not a link. Signing out changes server state, and a GET
               that mutates is one prefetch away from signing the user out

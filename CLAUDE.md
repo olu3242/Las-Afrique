@@ -34,6 +34,7 @@ standing in for a dependency that does not exist is exactly the case it names.
 | 9 | Reminders | **PASS** |
 | 10 | Golden path | **PASS** |
 | 11 | Group coordination (Phase 2) | **PASS** |
+| 12 | Referral (Phase 2) | **PASS** |
 
 Each iteration ships on its own branch and PR.
 
@@ -42,13 +43,28 @@ Where the rest of Phase 2 stands, after scope discovery for Iterations 12-16:
 
 | Capability | State |
 | --- | --- |
-| Referral | Scope proposed in `docs/ITERATION-12-SCOPE.md`, awaiting approval |
+| Referral | Scope approved; engine built as Iteration 12 |
 | Native mobile apps | Out of the engine sequence — a platform roadmap, not an engine |
 | Post-arrival AI concierge | Blocked on the same provider credential as Iteration 6 |
 
 Iterations 15-16 have no capability named anywhere, and are left empty rather
 than filled. The PRD names four Phase 2 capabilities and one is built; a
 five-iteration batch does not create a fifth engine.
+
+The rule referral adds, and which every later engine inherits: **a relationship
+between two users is readable by both and writable by neither.** `referrals`
+carries explicit `false` policies for insert, update and delete; the two writes
+that must happen go through security-definer functions that establish the
+referrer from a code the caller cannot read, and evaluate the qualification
+predicate against the caller's real rows. A user causes their attribution and
+cannot dictate it. `tests/referral-rls.test.ts` executes that as the referred
+user rather than as a stranger, because the referred user is the adversary with
+a motive.
+
+The second rule it adds: **the engine records no money.** A reward entitlement
+says "earned under policy X at time T" and carries no amount and no currency,
+because PRD §8 says the product does not hold money. That is a schema test, not
+a convention — the drift arrives one innocuous column at a time.
 
 The rule group coordination establishes, and which every later Phase 2 engine
 inherits: **membership never widens a tenant policy.** Group access lives in
