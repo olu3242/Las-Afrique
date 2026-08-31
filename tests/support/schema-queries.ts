@@ -501,3 +501,93 @@ export async function expectReferralGrants(db: Client): Promise<void> {
     ]);
   }
 }
+
+/**
+ * No client role may hold a privilege the engine does not use.
+ *
+ * A hosted Supabase project grants ALL on every new public table to `anon` and
+ * `authenticated`. Migrations that only ever *add* grants leave the rest of
+ * that default set in place, and it accumulated on every table created before
+ * Iteration 12 — which is invisible to a bare local cluster, because there are
+ * no default privileges there to inherit.
+ *
+ * TRUNCATE is the one that matters most, and the reason this is asserted rather
+ * than reviewed: row-level security does not apply to TRUNCATE at all. Every
+ * other verb has a policy behind it if the grant is wrong; that one does not.
+ *
+ * Run against a database built *with* those defaults locally, and against the
+ * real project in the hosted tier. The local caller must supply the
+ * with-defaults database — asserting this on a plain cluster proves nothing,
+ * since the surplus was never there to remove.
+ */
+export async function expectNoSurplusClientGrants(db: Client): Promise<void> {
+  const { rows } = await db.query<{
+    table_name: string;
+    grantee: string;
+    privilege_type: string;
+  }>(
+    `select table_name, grantee, privilege_type
+       from information_schema.role_table_grants
+      where table_schema = 'public' and grantee in ('anon', 'authenticated')`,
+  );
+
+  // DDL and TRUNCATE, held by a role that issues neither.
+  const surplus = rows.filter((r) =>
+    ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"].includes(r.privilege_type),
+  );
+  expect(
+    surplus.map((r) => `${r.grantee} ${r.privilege_type} on ${r.table_name}`).sort(),
+    "no client role may hold TRUNCATE, REFERENCES, TRIGGER or MAINTAIN",
+  ).toEqual([]);
+
+  // anon reads public reference data and holds nothing else anywhere. Stated
+  // as the complete set rather than a per-table check, so a grant on a table
+  // nobody thought to list still fails.
+  const anon = rows
+    .filter((r) => r.grantee === "anon")
+    .map((r) => `${r.table_name}:${r.privilege_type}`)
+    .sort();
+  expect(anon, "anon holds SELECT on reference data and nothing else").toEqual([
+    "cost_assumptions:SELECT",
+    "country_profiles:SELECT",
+  ]);
+
+  // And the required grants are still there: reference data readable,
+  // everything else fully writable by its owner under RLS.
+  const held = (table: string) =>
+    rows
+      .filter((r) => r.table_name === table && r.grantee === "authenticated")
+      .map((r) => r.privilege_type)
+      .sort();
+
+  for (const table of ["country_profiles", "cost_assumptions", "referral_programs"]) {
+    expect(held(table), `authenticated on ${table}`).toEqual(["SELECT"]);
+  }
+
+  for (const table of [
+    "profiles",
+    "trips",
+    "travelers",
+    "document_records",
+    "cost_estimates",
+    "savings_plans",
+    "vault_files",
+    "reminders",
+    "travel_groups",
+    "group_memberships",
+    "group_invitations",
+    "group_trips",
+    "group_tasks",
+    "group_task_assignments",
+    "group_activities",
+    "group_activity_participation",
+    "group_dependencies",
+  ]) {
+    expect(held(table), `authenticated on ${table}`).toEqual([
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE",
+    ]);
+  }
+}
