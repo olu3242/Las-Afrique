@@ -13,6 +13,7 @@ import {
   GROUP_ROOT_TABLE,
   GROUP_TABLES,
   REFERENCE_TABLES,
+  PUBLIC_INGEST_TABLES,
   REFERRAL_DUAL_PARTY_TABLES,
   REFERRAL_REFERENCE_TABLES,
   REFERRAL_TENANT_TABLES,
@@ -67,6 +68,7 @@ describe("migrations", () => {
       "0014_referral_code_provenance.sql",
       "0015_referral_invitation_attempts.sql",
       "0016_revoke_surplus_client_grants.sql",
+      "0017_waitlist.sql",
     ]);
   });
 
@@ -312,11 +314,42 @@ describe("migrations", () => {
     const expected = [
       ...TENANT_TABLES,
       ...REFERENCE_TABLES,
+      ...PUBLIC_INGEST_TABLES,
       ...GROUP_TABLES,
       ...REFERRAL_DUAL_PARTY_TABLES,
       GROUP_ROOT_TABLE,
     ].sort();
     expect(actual.sort()).toEqual(expected);
+  });
+
+  it("accepts waitlist signups without exposing the list", async () => {
+    await db.query("set role anon");
+    await db.query(
+      `insert into public.waitlist_signups (email, source)
+       values ('visitor@example.test', 'marketing-site')`,
+    );
+    await expect(
+      db.query("select email from public.waitlist_signups"),
+    ).rejects.toThrow(/permission denied/);
+    await db.query("reset role");
+
+    const { rows } = await db.query<{ email_normalised: string }>(
+      `select email_normalised from public.waitlist_signups`,
+    );
+    expect(rows).toEqual([{ email_normalised: "visitor@example.test" }]);
+  });
+
+  it("deduplicates normalised waitlist addresses", async () => {
+    await db.query(
+      `insert into public.waitlist_signups (email)
+       values ('Founder+launch@gmail.com')`,
+    );
+    await expect(
+      db.query(
+        `insert into public.waitlist_signups (email)
+         values ('founder@gmail.com')`,
+      ),
+    ).rejects.toThrow(/waitlist_signups_email_unique/);
   });
 
   it("gives every tenant table a user-owned column", async () => {
