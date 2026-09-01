@@ -7,7 +7,7 @@ documents need, what the trip will cost, what to save each month, and how many
 days are left. It calls that **Homecoming Readiness** — a single figure that
 answers where you're going, when, what to do next, and how ready you are.
 
-## Status: Phase 1 in progress — platform foundation
+## Status: MVP code complete — hosted release gates pending
 
 The Phase 0 marketing route is complete and stays live at `/`. Phase 1 is being
 built behind it in numbered iterations, one branch and PR each:
@@ -26,6 +26,10 @@ built behind it in numbered iterations, one branch and PR each:
 | 9 | Reminders | PASS |
 | 10 | Golden path | PASS |
 | 11 | Group coordination (Phase 2) | PASS |
+| 12 | Referral (Phase 2) | PASS |
+
+The current gap matrix and release gates are tracked in
+[`docs/MVP-GAP-ASSESSMENT.md`](docs/MVP-GAP-ASSESSMENT.md).
 
 An iteration counts as done only when its whole path works end to end and
 consumes the real engine before it — see
@@ -42,11 +46,8 @@ What the landing page does today:
 - previews passport and document readiness across five states
 - previews the deterministic budget breakdown, range, assumptions and savings plan
 - presents the eleven launch countries with a "last checked" freshness signal
-- collects waitlist interest
-
-> **Not yet wired:** the waitlist form updates local state only. Nothing is
-> stored or sent. Connect `components/sections/waitlist.tsx` to a real store
-> before deploying this anywhere public.
+- persists waitlist interest through an insert-only public policy; visitors can
+  submit an address but cannot read or enumerate the list
 
 All trip figures on the page are illustrative examples, labelled as such in the
 interface. None of it is live user data.
