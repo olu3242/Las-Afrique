@@ -274,6 +274,7 @@ export interface Database {
       referrals: Table<ReferralRow>;
       reward_entitlements: Table<RewardEntitlementRow>;
       referral_invitation_attempts: Table<ReferralInvitationAttemptRow>;
+      waitlist_signups: Table<WaitlistSignupRow>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -322,6 +323,17 @@ export const REFERENCE_TABLES = [
   "cost_assumptions",
   "referral_programs",
 ] as const;
+
+/** Public acquisition data: insert-only to anon, never client-readable. */
+export const PUBLIC_INGEST_TABLES = ["waitlist_signups"] as const;
+
+export interface WaitlistSignupRow {
+  id: string;
+  email: string;
+  email_normalised: string;
+  source: "marketing-site";
+  created_at: string;
+}
 
 // ---------------------------------------------------------------------------
 // Group coordination (Iteration 11)
