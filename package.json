@@ -15,7 +15,20 @@
     "db:stop": "scripts/test-db.sh stop",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run test:e2e",
-    "test:hosted": "vitest run --config vitest.hosted.config.ts"
+    "test:hosted": "vitest run --config vitest.hosted.config.ts",
+    "docker:start": "scripts/docker/stack.sh start",
+    "docker:stop": "scripts/docker/stack.sh stop",
+    "docker:reset": "scripts/docker/stack.sh reset",
+    "docker:migrate": "scripts/docker/stack.sh migrate",
+    "docker:status": "scripts/docker/stack.sh status",
+    "docker:logs": "scripts/docker/stack.sh logs",
+    "docker:shell": "scripts/docker/stack.sh shell",
+    "docker:build": "docker compose --env-file .env.docker build",
+    "docker:up": "docker compose --env-file .env.docker up -d --wait app",
+    "docker:down": "docker compose --env-file .env.docker down --remove-orphans",
+    "docker:test": "scripts/docker/certify.sh",
+    "docker:e2e": "docker compose --env-file .env.docker run --rm certify npx playwright test",
+    "certify:docker": "scripts/docker/certify-docker.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

@@ -227,15 +227,21 @@ Tests run against a real PostgreSQL cluster with the real policy predicates
 (`npm run db:start && npm test`). Do not mock the database in RLS tests — a
 mocked policy tests the mock, not the boundary.
 
-Two tiers, and they prove different things:
+Three tiers, and they prove different things:
 
 | Suite | Runs against | Proves |
 | --- | --- | --- |
 | `npm test` | Throwaway local Postgres | The migrations and policies are correct |
+| `npm run certify:docker` | The supported Supabase local stack, in Docker | The same, plus the real GoTrue, PostgREST and Storage enforce them, and the engines compose — twice, from an empty database |
 | `npm run test:hosted` | The real Supabase project | They were actually applied there, and the API enforces them |
 
-The local tier can be green while the hosted project is empty. Only the hosted
-tier certifies a hosted engine — see `docs/ITERATION-STANDARD.md`.
+The first two tiers can be green while the hosted project is empty. **Only the
+hosted tier certifies a hosted engine** — see `docs/ITERATION-STANDARD.md`. A
+green Docker run is `LOCAL_DOCKER_CERTIFICATION` and is never reported as
+`HOSTED_SUPABASE_CERTIFICATION`; `docs/DOCKER-CERTIFICATION.md` states that
+boundary and why the middle tier exists at all — three real Iteration 12
+defects needed a real GoTrue and a real production build to surface, and none
+of them needed a hosted project.
 
 `tests/hosted/**` is excluded from the default run and never has a fallback
 connection default: a missing credential fails loudly rather than letting a
@@ -284,6 +290,15 @@ npm run typecheck
 npm run db:start && npm test
 npm run build
 npm run test:e2e
+```
+
+Where a change touches migrations, policies, grants or an engine's composition,
+run the Docker tier too — it exercises the same code against the real Supabase
+services and catches what a bare Postgres structurally cannot:
+
+```bash
+npm run docker:start
+npm run certify:docker
 ```
 
 CI runs all of these on every pull request (`.github/workflows/ci.yml`), with

@@ -245,3 +245,15 @@ the hosted tier supports the second one.
 This distinction is the most common way an iteration gets falsely certified: the
 tests are real, the database is real, and the conclusion is still wrong because
 the real database is not the one the application talks to.
+
+The Docker tier (`npm run certify:docker`, `docs/DOCKER-CERTIFICATION.md`) sits
+between the two and changes nothing about that rule. It runs the real GoTrue,
+PostgREST and Storage, so it catches things a bare Postgres cannot — surplus
+grants a hosted project's default privileges add, a server action called during
+render, a token stored where a hash belongs; all three were Iteration 12
+defects that cost a hosted run each. But it is still a database that is not the
+one the application talks to in production.
+
+So it is `LOCAL_DOCKER_CERTIFICATION`, never `HOSTED_SUPABASE_CERTIFICATION`,
+and a green run of it is not a reason to move a row in the status table. What
+it is for is arriving at the hosted run with fewer things left to discover.

@@ -194,6 +194,32 @@ is honoured only because the connection string asks for it — Supabase requires
 TLS, so the hosted path is unaffected. The API suite is excluded from a
 rehearsal: it needs PostgREST and GoTrue, which a bare cluster does not have.
 
+### Local Docker certification
+
+A middle tier between the bare-Postgres suites and a hosted run: the supported
+Supabase local stack — the real GoTrue, PostgREST and Storage — in Docker, with
+this application's production build in front of it.
+
+```bash
+npm run docker:start      # bring the stack up; writes .env.docker
+npm run docker:build      # build the application and certification images
+npm run certify:docker    # the whole chain, from an empty database, twice
+```
+
+It exists because three real Iteration 12 defects — including a 500 on every
+user's first visit to `/referrals` — could only be observed against real
+Supabase services, and each observation was costing a hosted workflow run. None
+of them needed a hosted project; they needed a real GoTrue and a real
+production build.
+
+It also un-skips work: the four signed-in browser journeys used to run only in
+the hosted workflow, because the only route to a privileged key was the hosted
+Management API. They now execute locally too.
+
+**A green Docker run is not hosted certification.** It can be green against a
+perfect local database while the hosted project is empty. See
+[`docs/DOCKER-CERTIFICATION.md`](docs/DOCKER-CERTIFICATION.md).
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request:
@@ -203,6 +229,11 @@ rehearsal: it needs PostgREST and GoTrue, which a bare cluster does not have.
 | Lint and types | ESLint, `tsc --noEmit` |
 | Tests | Build unconfigured, then schema / RLS / bundle-safety against a real PostgreSQL service container |
 | Browser E2E | Build, then Playwright against the production server |
+
+`.github/workflows/docker-certification.yml` runs the Docker tier alongside it,
+holding no secrets at all — a tier whose claim is that it needs no hosted
+project should not be able to reach one by accident.
+`.github/workflows/hosted-db.yml` remains the separate, and only, hosted gate.
 
 The build step deliberately runs with **no** Supabase configuration: the
 marketing site must build on a fresh checkout, and protected routes must fail
@@ -222,6 +253,13 @@ closed rather than fall open when unconfigured.
 | `npm run test:e2e` | Playwright — browser end-to-end against a production build |
 | `npm run test:all` | Both suites |
 | `npm run db:start` / `db:stop` | Local Postgres for the database tests |
+| `npm run docker:start` / `docker:stop` | Bring the local Supabase stack up or down |
+| `npm run docker:reset` | Destroy the **local** database and replay every migration |
+| `npm run docker:build` / `docker:up` / `docker:down` | The application and certification images |
+| `npm run docker:test` | One certification pass against the running stack |
+| `npm run certify:docker` | The full chain, from an empty database, twice |
+| `npm run docker:e2e` | Browser journeys against the containerised stack |
+| `npm run docker:status` / `docker:logs` / `docker:shell` | Inspect the running stack |
 
 ## Stack
 

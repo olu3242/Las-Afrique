@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Build context exclusions.
+#
+# Two jobs. The first is size: node_modules and .next are rebuilt inside the
+# image and shipping them makes the context slower to send and the build
+# non-deterministic — a stale local .next would be copied over a fresh one.
+#
+# The second is the one that matters: .env* files hold real credentials on a
+# developer's machine, and anything in the build context can end up in an image
+# layer. They are excluded here as well as in .gitignore, because "not
+# committed" and "not in the image" are different properties.
+# ---------------------------------------------------------------------------
+
+.git
+.github
+node_modules
+.next
+out
+build
+coverage
+
+# Never in an image layer.
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Test and tooling output.
+test-results
+playwright-report
+blob-report
+e2e-results.json
+.playwright
+.verification
+*.tsbuildinfo
+
+# Supabase CLI scratch — holds the linked project reference on a developer's
+# machine. Nothing in an image should know which hosted project exists.
+supabase/.temp
+
+# Editor and OS noise.
+.idea
+.vscode
+.DS_Store
+npm-debug.log*
