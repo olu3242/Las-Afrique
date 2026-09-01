@@ -157,6 +157,15 @@ is never a build argument, because build arguments survive in image history.
 `tests/bundle-safety.test.ts` already proves no secret reaches the client
 bundle; the split here is the same rule applied to image layers.
 
+`certify-docker.sh` asserts it: the key must not appear in `docker history` or
+the image config. That assertion lives on the host rather than in the
+certification container, and the reason is worth keeping. It began inside
+`certify.sh`, guarded on `command -v docker` — and there is no Docker socket
+inside a container, so on CI it silently did nothing while passing locally. A
+claim about an image cannot be checked from inside that image, and an assertion
+that quietly skips where it matters most is worse than one never written,
+because it reads as coverage.
+
 ## The AI provider
 
 `AI_PROVIDER_API_KEY` is supported as a run-time-only variable and is absent by

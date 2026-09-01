@@ -77,28 +77,6 @@ record "ADDRESS_SPACE=PASS"
 log "application and runner share the host's addresses"
 
 # ---------------------------------------------------------------------------
-# The secret is not recoverable from the image.
-#
-# `tests/bundle-safety.test.ts` proves no secret reaches the browser. This is
-# the same rule one layer down: build arguments and ENV survive in image
-# history, so "it is only a build argument" is not a place a key that bypasses
-# row-level security may live. Skipped where there is no Docker socket — inside
-# the certify container there is nothing to inspect.
-# ---------------------------------------------------------------------------
-if command -v docker >/dev/null 2>&1 && docker image inspect takemehome-app:local >/dev/null 2>&1; then
-  step "no privileged key recoverable from the application image"
-  if [ -n "${SUPABASE_SECRET_KEY:-}" ]; then
-    if { docker history --no-trunc --format '{{.CreatedBy}}' takemehome-app:local
-         docker image inspect --format '{{json .Config.Env}}{{json .Config.Labels}}' takemehome-app:local
-       } | grep -qF "$SUPABASE_SECRET_KEY"; then
-      die "the privileged key is recoverable from takemehome-app:local. It must arrive at run time, never as a build argument or ENV."
-    fi
-  fi
-  record "IMAGE_SECRET_BOUNDARY=PASS"
-  log "image history and config carry no privileged key"
-fi
-
-# ---------------------------------------------------------------------------
 # Migration chain, from empty.
 # ---------------------------------------------------------------------------
 step "migration head matches the repository"

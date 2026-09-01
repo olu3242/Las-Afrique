@@ -61,6 +61,38 @@ docker compose --env-file "$ENV_FILE" build app
 docker compose --env-file "$ENV_FILE" build certify || \
   warn "certify image could not be built here; the suites will run on the host"
 
+load_env_file
+
+# ---------------------------------------------------------------------------
+# The secret is not recoverable from the image.
+#
+# Asserted here rather than inside certify.sh, and the reason is the bug this
+# was: it is a claim about the *image*, and it was living in the script that
+# runs *inside* the image. There is no Docker socket in there, so the check was
+# guarded on `command -v docker` and silently did nothing on CI — passing
+# locally, absent from the CI summary, and nobody the wiser. An assertion that
+# quietly skips where it matters most is worse than one that was never written,
+# because it reads as coverage.
+#
+# It belongs where the image is built: on the host, once, before either pass.
+#
+# tests/bundle-safety.test.ts proves no secret reaches the browser. This is the
+# same rule one layer down: build arguments and ENV survive in image history,
+# so "it is only a build argument" is not a place a key that bypasses row-level
+# security may live.
+# ---------------------------------------------------------------------------
+log "checking no privileged key is recoverable from the application image"
+if [ -n "${SUPABASE_SECRET_KEY:-}" ]; then
+  if { docker history --no-trunc --format '{{.CreatedBy}}' takemehome-app:local
+       docker image inspect --format '{{json .Config.Env}}{{json .Config.Labels}}' takemehome-app:local
+     } | grep -qF "$SUPABASE_SECRET_KEY"; then
+    die "the privileged key is recoverable from takemehome-app:local. It must arrive at run time, never as a build argument or ENV."
+  fi
+  log "IMAGE_SECRET_BOUNDARY=PASS"
+else
+  die "SUPABASE_SECRET_KEY is not set, so the image secret boundary cannot be checked. Run: npm run docker:start"
+fi
+
 run_pass          # CLEAN_DB_RUN_1
 run_pass          # reset, then CLEAN_DB_RUN_2 — the one that proves reproducibility
 
