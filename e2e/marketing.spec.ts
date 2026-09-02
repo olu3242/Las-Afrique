@@ -174,7 +174,7 @@ test.describe("landing page interactions", () => {
     } else {
       // The unconfigured CI build deliberately has no database. It must fail
       // honestly rather than manufacture a successful signup.
-      await expect(page.getByRole("alert")).toContainText(
+      await expect(page.locator("#waitlist-error")).toContainText(
         /temporarily unavailable/i,
       );
     }
