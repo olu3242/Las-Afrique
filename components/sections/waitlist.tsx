@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { EXAMPLE_TRIP } from "@/lib/mock-data";
 import {
   joinWaitlist,
-  WAITLIST_IDLE,
+  type WaitlistState,
 } from "@/lib/waitlist/actions";
 
 /**
@@ -14,7 +14,8 @@ import {
  * through the anon role, whose policy can insert but cannot read the list.
  */
 export function Waitlist() {
-  const [state, action, pending] = useActionState(joinWaitlist, WAITLIST_IDLE);
+  const initialState: WaitlistState = { status: "idle" };
+  const [state, action, pending] = useActionState(joinWaitlist, initialState);
 
   return (
     <section id="waitlist" className="scroll-mt-20">
