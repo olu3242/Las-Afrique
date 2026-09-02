@@ -9,8 +9,6 @@ export type WaitlistState =
   | { status: "success" }
   | { status: "error"; message: string; email?: string };
 
-export const WAITLIST_IDLE: WaitlistState = { status: "idle" };
-
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function joinWaitlist(
@@ -50,4 +48,3 @@ export async function joinWaitlist(
     email,
   };
 }
-
