@@ -1,25 +1,21 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useActionState } from "react";
 import { EXAMPLE_TRIP } from "@/lib/mock-data";
+import {
+  joinWaitlist,
+  type WaitlistState,
+} from "@/lib/waitlist/actions";
 
 /**
  * Phase 0 conversion surface.
  *
- * NOTE: there is no waitlist backend yet. Submitting updates local state only —
- * nothing is stored or sent. Wire this handler to the waitlist store before this
- * page is deployed anywhere real. Joining the waitlist does not create an
- * account; accounts arrive with Phase 1.
+ * Joining the waitlist does not create an account. The server action writes
+ * through the anon role, whose policy can insert but cannot read the list.
  */
 export function Waitlist() {
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!email.trim()) return;
-    setSubmitted(true);
-  }
+  const initialState: WaitlistState = { status: "idle" };
+  const [state, action, pending] = useActionState(joinWaitlist, initialState);
 
   return (
     <section id="waitlist" className="scroll-mt-20">
@@ -35,7 +31,7 @@ export function Waitlist() {
             we&rsquo;ll tell you when planning opens.
           </p>
 
-          {submitted ? (
+          {state.status === "success" ? (
             <p
               role="status"
               className="mt-9 rounded-2xl border border-baobab/40 bg-baobab/10 px-6 py-5 text-base text-ivory"
@@ -48,7 +44,7 @@ export function Waitlist() {
             </p>
           ) : (
             <form
-              onSubmit={handleSubmit}
+              action={action}
               className="mx-auto mt-9 flex max-w-md flex-col gap-3 sm:flex-row"
             >
               <div className="flex-1 text-left">
@@ -57,23 +53,32 @@ export function Waitlist() {
                 </label>
                 <input
                   id="waitlist-email"
+                  name="email"
                   type="email"
                   required
                   autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  maxLength={254}
+                  defaultValue={state.status === "error" ? state.email : ""}
+                  aria-describedby={state.status === "error" ? "waitlist-error" : undefined}
                   placeholder="you@example.com"
                   className="w-full rounded-full border border-ivory/20 bg-indigo-900/70 px-5 py-3 text-base text-ivory placeholder:text-muted focus-visible:border-sunset"
                 />
               </div>
               <button
                 type="submit"
+                disabled={pending}
                 className="rounded-full bg-sunset px-6 py-3 text-base font-medium text-indigo-950 transition-colors hover:bg-sunset/90"
               >
-                Join the waitlist
+                {pending ? "Joining…" : "Join the waitlist"}
               </button>
             </form>
           )}
+
+          {state.status === "error" ? (
+            <p id="waitlist-error" role="alert" className="mt-3 text-sm text-sunset">
+              {state.message}
+            </p>
+          ) : null}
 
           <p className="mt-5 text-xs leading-relaxed text-muted">
             We&rsquo;ll only email you about Take Me Home. Joining the waitlist

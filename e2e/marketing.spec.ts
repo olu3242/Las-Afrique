@@ -159,15 +159,25 @@ test.describe("landing page interactions", () => {
     await expect(disclosure).toContainText(/confidence/i);
   });
 
-  test("waitlist form accepts an address and confirms", async ({ page }) => {
+  test("waitlist form reports its real persistence state", async ({ page }) => {
     await page.goto("/");
 
     await page.fill("#waitlist-email", "traveller@example.com");
     await page.getByRole("button", { name: /join the waitlist/i }).last().click();
 
-    await expect(page.getByRole("status")).toContainText(
-      /we['\u2019]ve got your address/i,
-    );
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      // The Docker and hosted tiers have a real backend. This is the assertion
+      // that distinguishes persistence from the old local-state-only form.
+      await expect(page.getByRole("status")).toContainText(
+        /we['\u2019]ve got your address/i,
+      );
+    } else {
+      // The unconfigured CI build deliberately has no database. It must fail
+      // honestly rather than manufacture a successful signup.
+      await expect(page.locator("#waitlist-error")).toContainText(
+        /temporarily unavailable/i,
+      );
+    }
   });
 
   test("labels illustrative figures as illustrative", async ({ page }) => {
