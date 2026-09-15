@@ -1,0 +1,17 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { getTrip } from '@/lib/trips/service';
+import { getOrCreateWorkflow } from '@/lib/workflow/service';
+
+export const dynamic='force-dynamic';
+const label=(value:string)=>value.toLowerCase().replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
+
+export default async function WorkflowPage({params}:{params:Promise<{id:string}>}){
+ const {id}=await params; const trip=await getTrip(id); if(!trip) notFound(); const workflow=await getOrCreateWorkflow(id);
+ return <main className="mx-auto max-w-5xl space-y-8 px-4 py-10">
+  <header className="space-y-3"><Link href={`/trips/${id}`} className="text-sm underline">← Back to trip</Link><p className="text-xs font-semibold uppercase tracking-[.2em]">Action Center</p><h1 className="text-4xl font-semibold">{trip.trip.destination_city??trip.destinationName??'Your homecoming'}</h1><p className="max-w-2xl text-slate-600">One governed view of what the trip needs next, why it matters, and what is blocking progress.</p></header>
+  <section className="grid gap-4 md:grid-cols-3"><div className="rounded-2xl border p-5"><p className="text-sm text-slate-500">Workflow state</p><p className="mt-2 text-xl font-semibold">{label(workflow.state)}</p><p className="mt-2 text-xs text-slate-500">Version {workflow.version}</p></div><div className="rounded-2xl border p-5 md:col-span-2"><p className="text-sm text-slate-500">Next best action</p><p className="mt-2 text-xl font-semibold">{label(workflow.nextAction.action)}</p><p className="mt-2 text-sm text-slate-600">{workflow.nextAction.reason}</p>{workflow.nextAction.blocking&&<p className="mt-3 text-xs font-semibold uppercase tracking-wide">Blocking</p>}</div></section>
+  <section className="grid gap-6 md:grid-cols-2"><div className="rounded-2xl border p-5"><h2 className="text-xl font-semibold">Open exceptions</h2>{workflow.openExceptions.length===0?<p className="mt-4 text-sm text-slate-600">No open exceptions.</p>:<ul className="mt-4 space-y-4">{workflow.openExceptions.map(x=><li key={x.id}><p className="font-medium">{label(x.category)} · {label(x.severity)}</p><p className="text-sm text-slate-600">{x.cause}</p><p className="mt-1 text-sm">Next: {x.recommendedAction}</p></li>)}</ul>}</div><div className="rounded-2xl border p-5"><h2 className="text-xl font-semibold">Approvals</h2>{workflow.pendingApprovals.length===0?<p className="mt-4 text-sm text-slate-600">No action is waiting for approval.</p>:<ul className="mt-4 space-y-4">{workflow.pendingApprovals.map(a=><li key={a.id}><p className="font-medium">{label(a.action)}</p><p className="text-sm text-slate-600">{a.provider??'Provider pending'}{a.amount!=null?` · ${a.amount.toLocaleString()} ${a.currency??''}`:''}</p><p className="mt-1 text-xs">Approval expires {new Date(a.expiresAt).toLocaleString()}</p></li>)}</ul>}</div></section>
+  <section className="rounded-2xl border p-5"><h2 className="text-xl font-semibold">Workflow timeline</h2>{workflow.recentEvents.length===0?<p className="mt-4 text-sm text-slate-600">The workflow is initialized. Its first transition will appear here.</p>:<ol className="mt-5 space-y-5 border-l pl-5">{workflow.recentEvents.map(e=><li key={e.id}><p className="font-medium">{e.fromState?`${label(e.fromState)} → `:''}{label(e.toState)}</p><p className="text-sm text-slate-600">{e.reason}</p><time className="text-xs text-slate-500">{new Date(e.createdAt).toLocaleString()}</time></li>)}</ol>}</section>
+ </main>;
+}
