@@ -14,8 +14,9 @@ async function userId(){ const supabase=await createClient(); const {data:{user}
 
 export async function getOrCreateWorkflow(tripId:string):Promise<WorkflowSnapshot>{
   const {supabase,userId:uid}=await userId();
-  let {data:row,error}=await supabase.from('trip_workflows').select('*').eq('trip_id',tripId).maybeSingle();
+  const {data:existingRow,error}=await supabase.from('trip_workflows').select('*').eq('trip_id',tripId).maybeSingle();
   if(error) throw error;
+  let row=existingRow;
   if(!row){ const created=await supabase.from('trip_workflows').insert({user_id:uid,trip_id:tripId,state:'DREAMING',outcome_contract:{},context:{}}).select('*').single(); if(created.error) throw created.error; row=created.data; }
   const [exceptions,approvals,events]=await Promise.all([
     supabase.from('workflow_exceptions').select('id,category,severity,cause,recommended_action').eq('workflow_id',row.id).eq('status','OPEN'),
