@@ -39,7 +39,12 @@ alter table public.workflow_approvals enable row level security; alter table pub
 alter table public.workflow_tool_executions enable row level security; alter table public.workflow_tool_executions force row level security;
 
 do $$ declare t text; begin foreach t in array array['trip_workflows','workflow_events','workflow_evidence','workflow_exceptions','workflow_approvals','workflow_tool_executions'] loop
-  execute format('revoke all on public.%I from anon',t); execute format('grant select,insert,update,delete on public.%I to authenticated',t);
+  -- Supabase may apply broad ALTER DEFAULT PRIVILEGES to new public tables.
+  -- Strip both client roles first, then grant only the four DML verbs the app uses.
+  -- This prevents TRUNCATE (which bypasses RLS), REFERENCES and TRIGGER from leaking.
+  execute format('revoke all on public.%I from anon',t);
+  execute format('revoke all on public.%I from authenticated',t);
+  execute format('grant select,insert,update,delete on public.%I to authenticated',t);
   execute format('create policy %I on public.%I for select to authenticated using (user_id = auth.uid())',t||'_select',t);
   execute format('create policy %I on public.%I for insert to authenticated with check (user_id = auth.uid())',t||'_insert',t);
   execute format('create policy %I on public.%I for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())',t||'_update',t);
